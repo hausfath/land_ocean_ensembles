@@ -1,0 +1,335 @@
+# Land-only LSAT ensemble — methodology
+
+This note describes how we build a 10,000-member ensemble of annual global
+mean **land surface air temperature (LSAT)** anomalies, approximately
+replicating the family-tree-with-imputation approach used for GMST by
+Thorne et al. (2026, ESSD discussion paper 2025-825), but applied to
+land-only datasets and with a much smaller catalogue.
+
+The goal is to produce an LSAT analogue of the Thorne SST-grouped
+ensemble so that, downstream, an LSAT ensemble × SST ensemble ×
+land-fraction weighting can reconstruct a GMST ensemble whose
+structural uncertainty is decomposed by component. This first pass
+concerns *only* the LSAT side.
+
+## Input datasets (LSAT, qualifying products in May 2026)
+
+| # | Dataset | Native ensemble? | Uncertainty form | Time span | Native baseline | File(s) |
+|---|---------|------------------|------------------|-----------|-----------------|---------|
+| 1 | Berkeley Earth High-Resolution Land | 10 members | ensemble | 1750-01 – 2026-04 | 1951-1980 | `Land Data/Berkeley Earth Highres/Land_TAVG_ensemble.txt` |
+| 2 | CRUTEM5 v5.1.0.0 | No | uncorrelated σ + correlated σ + coverage σ + bias 2.5/97.5 CI | 1850-01 – 2026-XX | 1961-1990 | `Land Data/CRUTEM5/CRUTEM.5.1.0.0.component_series.global.monthly.csv` |
+| 3 | GloSATLAT v1.0.0.0 | No | best estimate + 2.5/97.5 CI (and decomposed σ components) | 1781-01 – 2021-12 | 1961-1990 | `Land Data/GloSATLAT/GloSATLAT-1-0-0-0_{summary,component}-series_global_monthly.nc` |
+| 4 | DCLSAT (DCENT v3.0 `lsat` field) | 200 members (gridded; we will reduce to global means) | ensemble of global means we compute ourselves | 1850-01 – 2025-12 | 1982-2014 | `Land Data/DCLSAT/DCENT_ensemble_mean_1850_2025.nc` (mean only currently; 200 members to be pulled) |
+| 5 | NOAA Land v6.1.0 | No | deterministic best estimate only — v6.1 aravg text file has variance columns set to `-999`; merged-product gridded NetCDF has no separate land uncertainty field | 1850-01 – 2026-04 | 1971-2000 (aravg text) / 1991-2020 (gridded) | `Land Data/NOAA Land/aravg.mon.land.90S.90N.v6.1.0.202604.asc` |
+
+### Time-coverage note
+
+GloSATLAT ends in 2021-12. The Thorne split-and-splice scheme has a
+**tail** (pre-1996) and **head** (1996–present) sub-ensemble. GloSATLAT
+qualifies for the tail. For the head it does not. Berkeley Earth, CRUTEM5,
+DCLSAT, NOAA Land all cover both tail and head.
+
+## Step 1 — Common time/baseline grid
+
+1. Reduce every dataset to **annual means** (Jan-Dec) of the global-mean
+   monthly anomaly. For monthly-uncertainty datasets without ensemble we
+   propagate uncertainty to the annual mean explicitly (see Step 2).
+2. Truncate to **1850–2025**. 2025 is the latest complete calendar year
+   as of the working date 2026-05-12 for Berkeley Earth, CRUTEM5,
+   DCLSAT and NOAA Land. GloSATLAT ends in 2021-12 and so does not
+   contribute to 2022–2025; in those years its 0.125 weight is
+   redistributed to CRUTEM5 (the only other CRU-lineage leaf), as
+   defined in Step 4. The information loss is minimal because
+   CRUTEM5 and GloSATLAT have r=0.999 annual correlation and
+   0.026 °C RMS difference over their overlap 1858–2021, i.e. they
+   are effectively the same product on the 1850-onward axis.
+3. Re-baseline each dataset (and each ensemble member) to a **zero mean
+   over 1981–2010**. This matches the Thorne choice and is the modern
+   reference period used in AR7 WG1. The 1981–2010 mean is computed on
+   the *member* (not just the central estimate) so cross-member spread is
+   preserved on the baseline.
+
+## Step 2 — Build a per-dataset ensemble
+
+We target a per-dataset ensemble of native size (no synthetic
+upsampling); the family tree (Step 4) handles the expansion to the
+final 10,000 draws. Per-dataset details:
+
+### 2.1 Berkeley Earth — keep 10 native members (no bootstrap)
+
+The Berkeley Earth High-Resolution release ships 10 members. We keep
+all 10 at native count and let the family-tree sampler (Step 5) draw
+uniformly among them. Result: roughly 2,500 of the final 10,000
+ensemble draws will be one of 10 distinct BE trajectories.
+
+We **do not** bootstrap or parametric-augment to 200. Bootstrapping
+would pretend to higher effective N without adding information, and
+parametric augmentation would treat BE's structural perturbations as
+Gaussian noise, which they are not. The 10-trajectory granularity will
+appear as visible step-clustering in tail percentiles — this is
+informative (it advertises BE's under-sampling) rather than a bug.
+
+### 2.2 CRUTEM5 — synthesize from variance components
+
+CRUTEM5 publishes monthly:
+- Best-estimate anomaly *a(t)*
+- Uncorrelated 1σ uncertainty *u_u(t)* (independent month-to-month)
+- Correlated 1σ uncertainty *u_c(t)* (sampling/method correlated across time)
+- Coverage 1σ uncertainty *u_v(t)* (correlated across time)
+- Bias component 2.5/97.5 CI (derived from a set of bias realisations)
+
+We synthesize a 200-member monthly ensemble as
+*a(t) + e_u(t) + α · u_c(t) + β · u_v(t) + γ · b(t)*
+where:
+- *e_u(t)* — monthly noise term with AR(1) coefficient ρ = 0.3 month-to-month
+  (rather than fully independent draws). Each per-member trajectory
+  starts from N(0, u_u(0)) and evolves as
+  *e_u(t) = ρ · e_u(t−1) · (u_u(t)/u_u(t−1)) + √(1−ρ²) · N(0, u_u(t))*.
+  The ρ = 0.3 value is a reasonable compromise between
+  "fully independent" (which under-represents sub-annual persistence and
+  is wiped out by annual averaging) and "fully correlated" (which is
+  already handled by the *u_c* term).
+- *α, β* — per-member draws from N(0,1), constant across time, applied
+  with the time-varying σ. This is the standard "correlated nuisance
+  scalar" approximation Morice et al. (2021) use. It **overstates**
+  low-frequency uncertainty (it treats the correlated/coverage σ as
+  having an infinite decorrelation timescale, when the real timescale
+  is years to decades). We retain it as the simplest defensible
+  approximation; full covariance matrices would be cleaner if available.
+- *γ · b(t)* — the published bias CI translated into a 1σ envelope
+  ( (upper − lower)/(2·1.96) ); *γ ~ N(0,1)* per member, constant in
+  time. This is a **fallback**: the bias CI is generated from
+  underlying multi-realisation bias trajectories, not from a single σ.
+  Where the bias realisations are exposed (HadCRUT5 publishes them;
+  CRUTEM5 v5.1 does **not**) we should sample realisations directly.
+  Since CRUTEM5 only ships the CI, the Gaussian scalar is what we use,
+  flagged here as the weakest link in this dataset's synthesis.
+
+Annual means are computed from each 12-month sequence per member.
+This is a deliberate simplification of HadCRUT5's full ensemble
+construction — we are not trying to replicate it bit-for-bit, only to
+generate plausible LSAT realisations with the correct uncertainty
+magnitude and approximate temporal correlation.
+
+After synthesis we verify empirically that the resulting annual σ
+matches CRUTEM5's published annual CI to within ~10%; if it
+under-shoots we raise ρ from 0.3 toward 0.6 to extend the persistence
+of the uncorrelated component.
+
+### 2.3 GloSATLAT — Gaussian draws scaled to native CI, donor temporal structure
+
+GloSATLAT's `summary-series` file provides `tas`, `tas_lower`, `tas_upper`
+at monthly resolution. We treat `(upper − lower)/(2·1.96)` as the
+monthly 1σ. The `component-series` decomposes that σ into uncorrelated,
+correlated, coverage, and bias parts — we use these like CRUTEM5
+(Section 2.2) with the same correlated/independent/bias-constant
+structure. This guarantees that the resulting 200 ensemble members
+recover GloSATLAT's published 95% CI.
+
+GloSATLAT ends in 2021. We do **not** extend it; instead, the family
+tree assigns zero weight to GloSATLAT for 2022–present (see Step 4).
+
+### 2.4 DCLSAT — pull 200 native DCENT members, compute LSAT global means
+
+The DCENT v3.0 Harvard Dataverse release exposes 200 gridded NetCDFs
+(~25 MB each, ~5 GB total) with separate `sst`, `lsat`, and `temperature`
+fields. We download all 200, compute the area-weighted (cos(lat))
+global mean of the `lsat` field per member per month, store the
+resulting 200×(monthly-times) matrix as `DCLSAT_global_mean_ensemble.csv`,
+and *then delete the raw NetCDFs* (manifest of fileIds preserved in the
+methodology so the pull is reproducible).
+
+Note: `lsat` is defined only on land grid cells (NaN over ocean). The
+global mean is computed as Σ(cos(lat) · lsat) / Σ(cos(lat) · mask), so
+it is a land-area-weighted mean restricted to land cells — matching the
+quantity reported by Berkeley/CRU/NOAA.
+
+**Important caveat:** each DCENT member's LSAT field is *paired* with a
+specific SST field under DCENT's dynamical-consistency constraint. The
+200-member spread of LSAT marginals therefore *under-represents* the
+uncertainty that would obtain in a standalone-LSAT product, because
+joint consistency rules out some LSAT-only-extreme trajectories. The
+LSAT marginal spread is plausibly ~10–30% narrower than a fully
+independent DCLSAT product would show. We flag this in code and apply
+no correction in v1; a future sensitivity test could inflate the
+DCLSAT ensemble's anomalies by 1.15× to bracket the high end.
+
+### 2.5 NOAA Land — deterministic best estimate + DCLSAT-donor uncertainty
+
+NOAA's v6.1 aravg text drops parametric uncertainty, and the gridded
+NetCDF has only the merged-product anomaly with no land-only
+uncertainty field. We therefore:
+- Use the aravg text `anomaly` column as the deterministic central estimate.
+- Add a donor uncertainty ensemble to it. The donor is **DCLSAT's
+  200-member ensemble** (Section 2.4), demeaned (so the donor's
+  ensemble-mean is removed at each time step), and rescaled to match a
+  target 1σ envelope informed by GloSATLAT's σ time series. Rationale:
+  NOAA Land uses GHCN-M v4 stations and pairwise homogenization (PHA),
+  which is far closer to DCLSAT's station base and method than to
+  CRUTEM5's reduced-space optimal-interpolation gridding. Using DCLSAT
+  as the donor preserves NOAA-family temporal structure of coverage
+  uncertainty (especially pre-1900) better than CRUTEM5 would.
+
+This is the most subjective imputation in the methodology. NOAA Land
+contributes **no independent uncertainty information** to the final
+ensemble — only its best-estimate trajectory adds signal. To reflect
+this we keep NOAA in the family tree but flag the imputation
+explicitly; a half-weight sensitivity test (NOAA at 0.125 instead of
+0.25) is left as future work.
+
+## Step 3 — Re-baseline all five 200-member ensembles to 1981–2010
+
+For every member of every dataset:
+- subtract that member's own 1981–2010 mean.
+
+After this step all five ensembles share zero mean over 1981–2010 and
+are directly comparable.
+
+## Step 4 — Family tree weighting
+
+With only 5 LSAT products we use a shallow tree grouped by structural
+method. Equal probability is assigned at each split (subjective; see
+Thorne 2026 §3.2.5).
+
+DCLSAT is placed in its **own fourth family** (the "dynamical-constraint
+family"). Although DCLSAT shares GHCN-M v4 stations with NOAA Land, its
+joint SST/LSAT energy-balance correction is methodologically orthogonal
+to any other product in this catalogue and is the dimension on which it
+is most structurally independent. Placing it inside the CRU lineage
+(as an earlier draft did) misrepresented its methodology; placing it
+alongside NOAA in a PHA family would under-acknowledge its uniqueness.
+
+```
+LSAT root (P=1)
+├── HOMOGENIZATION / SCALPEL family    (P=1/4)
+│   └── Berkeley Earth                              (P=1/4)
+├── PAIRWISE PHA family                 (P=1/4)
+│   └── NOAA Land                                   (P=1/4)
+├── CRU-LINEAGE family                  (P=1/4)
+│   ├── CRUTEM5                                     (P=1/8)
+│   └── GloSATLAT                                   (P=1/8)
+└── DYNAMICAL-CONSTRAINT family         (P=1/4)
+    └── DCLSAT                                      (P=1/4)
+```
+
+Resulting leaf probabilities (sum to 1):
+- Berkeley Earth: **0.250**
+- NOAA Land: **0.250**
+- DCLSAT: **0.250**
+- CRUTEM5: **0.125**
+- GloSATLAT: **0.125**
+
+**Time-varying weights for 2022–2025:** GloSATLAT does not cover 2022
+onward, so for those years we redistribute its 0.125 probability mass
+to CRUTEM5 (the only other leaf in the CRU-lineage family) — i.e.
+CRUTEM5 becomes 0.250 for years 2022–2025 and GloSATLAT 0.0. All other
+weights unchanged. This preserves the family-level weights (CRU
+lineage remains P=0.25 throughout).
+
+**Planned sensitivity tests (out of scope for v1):**
+- Collapse HOMOG and PHA into a single "single-product" super-family
+  (P=1/3 for {BE, NOAA} jointly, P=1/3 for CRU-lineage, P=1/3 for
+  DCLSAT). This down-weights BE and NOAA's single-leaf privilege.
+- Place DCLSAT in PHA-family with NOAA (DCLSAT gets P=1/6, NOAA P=1/6).
+- Half-weight NOAA Land (0.125 instead of 0.250) to reflect its
+  imputed-uncertainty status.
+- Run with a 1995/96 splice to quantify the spread inflation we forgo
+  by not splicing (Step 5 retains the unspliced version as default).
+
+## Step 5 — Generate 10,000-member ensemble
+
+For each of 10,000 draws:
+1. Pick a leaf dataset using year-dependent weights from Step 4.
+2. From that leaf's (200-member, already-rebaselined) ensemble, sample
+   one member uniformly at random.
+3. Take that member's full 1850–2025 annual time series.
+4. Record it as one ensemble member.
+
+The result is a 176 × 10,001 CSV (year + 10,000 anomaly columns), with
+each column being a complete-period draw. Year-by-year statistics
+(mean, 2.5/97.5 percentiles, SD) are then computed for plotting.
+
+Note: unlike Thorne's GMST pipeline we do **not** splice tail and head
+at 1995/96 — for LSAT alone the head/tail distinction matters less
+since all leaves cover both, and splicing artificially decorrelates
+pre-1996 and post-1995 uncertainty (Thorne flags this as a limitation
+of his own approach in his Supplement §3).
+
+## Known limitations (resolved from stats review)
+
+1. **Berkeley Earth's 10 members propagate into 25% of the final
+   ensemble.** Tail percentiles (especially 2.5/97.5) will show
+   step-clustering at fewer than 10 distinct values in regimes where
+   BE dominates. This is informative, not a bug — it advertises BE's
+   under-sampling.
+2. **CRUTEM5/GloSATLAT bias term is a Gaussian-scalar fallback.**
+   CRUTEM5 v5.1 publishes only the bias CI, not realisations, so we
+   cannot sample realisations directly. This likely overstates
+   low-frequency bias uncertainty (treats it as perfectly correlated
+   in time) while understating sub-annual structure.
+3. **DCLSAT marginal-LSAT spread is conditioned on SST/LSAT joint
+   consistency** and is plausibly ~10–30% narrower than a standalone
+   DCLSAT product's uncertainty would be.
+4. **NOAA Land contributes no independent uncertainty.** Its donor
+   ensemble (rescaled DCLSAT) is fully imputed. We keep its
+   best-estimate signal in the family tree at P=0.25; this means a
+   quarter of the final ensemble has imputed-DCLSAT-shape uncertainty
+   wrapped around NOAA's mean.
+5. **Effective N in the tail is far below 10,000.** With Berkeley
+   Earth's 10 native trajectories sitting under P=0.25 of the tree,
+   the effective independent draws in the tail (1850–1900) is
+   plausibly closer to 200–500 once all leaves are accounted for.
+   Percentile-based p-values should not be used for trend
+   significance — the spread is structural, not stochastic.
+6. **Bias toward over-coverage low-frequency / under-coverage
+   high-frequency** in CRUTEM5/GloSATLAT synthesis (Section 2.2).
+
+## Safe vs unsafe downstream uses
+
+**Safe:**
+- Plotting central estimate + 90% band for visual comparison with a
+  GMST ensemble.
+- Propagating to GMST via SST ensemble × land-fraction combination.
+- Reporting the ensemble mean as the LSAT best estimate.
+
+**Unsafe:**
+- Reporting tail-period 2.5/97.5 percentiles as if calibrated
+  frequencies.
+- Trend-significance p-values from member-percentile counts.
+- Per-leaf attribution without documenting the tree weights and
+  running the sensitivity tests listed in Step 4.
+
+## File outputs
+
+- `land_ensemble.csv` — 176 × 10,001 (year + 10,000 members), 1850–2025,
+  annual anomalies on a 1981–2010 baseline (each member centred at zero
+  over 1981–2010 by construction).
+- `land_ensemble_summary.csv` — annual mean, 2.5 / 50 / 97.5 percentiles
+  and 1σ from the 10,000-member ensemble.
+- `land_ensemble_perdataset.csv` — per-dataset annual best estimate and
+  1σ across that dataset's own (200-or-10-member) ensemble.
+- `land_ensemble.png` — central estimate + 95% band, with the five
+  individual best estimates overlaid for sanity-checking.
+- `family_tree_land.png` — visual summary of the family tree.
+
+## References
+
+- Thorne, P. W. *et al.* (2026), *A framework for an operational
+  assessment of observed global warming-to-date*, ESSD preprint
+  https://doi.org/10.5194/essd-2025-825 — Sections 3.2.5, and esp.
+  Figures 24–25 for the family-tree GMST construction.
+- Morice, C. P. *et al.* (2021), *An updated assessment of near-surface
+  temperature change from 1850: the HadCRUT5 data set*, JGR-Atmos
+  126(3), e2019JD032361 — for the correlated/uncorrelated/bias σ
+  decomposition we re-apply to CRUTEM5 and GloSATLAT.
+- Chan, D., Gebbie, G., Huybers, P. & Kent, E. C. (2024), *DCENT:
+  Dynamically Consistent ENsemble of Temperature*, Scientific Data 11,
+  article 612 — for the dynamical-consistency LSAT/SST joint correction
+  underlying DCLSAT.
+- Taylor, M. *et al.* (2025), *GloSAT land air temperature*, GDJ —
+  for the LATsdb / LEK normals / exposure-bias adjustment used by
+  GloSATLAT.
+- Rohde, R. A. *et al.* (2013, 2020 updates), Berkeley Earth methodology
+  papers — for the scalpel-based homogenization and kriging.
+- Yin, X. *et al.* (2024, 2025), NOAAGlobalTemp v6/v6.1 documentation —
+  for the LSAT analysis used in NOAA Land.

@@ -1,0 +1,19 @@
+# Raw input datasets — large, third-party-licensed. Re-fetched via download_data.sh.
+Land Data/
+Ocean Data/
+
+# Working dirs created during DCENT / HadSST4 extraction; emptied automatically
+# by prep scripts but the empty directories themselves are not part of the repo.
+temp_files/
+
+# System / editor clutter
+.DS_Store
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
