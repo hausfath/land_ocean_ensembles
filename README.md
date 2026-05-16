@@ -15,15 +15,23 @@ component.
 
 ## Headline result
 
+![Land and ocean temperature ensembles, 1850–2025](land_ocean_ensemble.png)
+
 | Year | LSAT median | LSAT 5–95% | SST median | SST 5–95% |
 |------|------------:|----------:|----------:|---------:|
-| 1850 | −1.20 °C    | −1.75 to −0.60 | −0.59 °C | −1.05 to −0.16 |
-| 1900 | −0.68 °C    | −0.93 to −0.46 | −0.41 °C | −0.60 to −0.25 |
-| 2024 | +1.25 °C    | +1.12 to +1.37 | +0.61 °C | +0.57 to +0.66 |
+| 1850 | −0.21 °C    | −0.72 to +0.44 | −0.01 °C | −0.49 to +0.28 |
+| 1900 | +0.34 °C    | +0.11 to +0.57 | +0.09 °C | −0.08 to +0.23 |
+| 1950 | +0.22 °C    | +0.12 to +0.28 | +0.05 °C | −0.04 to +0.28 |
+| 2000 | +1.03 °C    | +1.01 to +1.05 | +0.48 °C | +0.47 to +0.50 |
+| 2024 | +2.29 °C    | +2.16 to +2.40 | +1.10 °C | +1.07 to +1.16 |
 
-*Anomalies on the 1981–2010 baseline. See `land_ocean_ensemble.png`
-for the figure with anomalies displayed against 1850–1900 via the
-modern-baseline-plus-offset approach.*
+*Anomalies relative to the 1850–1900 average. Percentiles are computed
+on the 1981–2010 modern baseline (where the ensembles have minimum
+spread by construction) and then shifted by a constant offset so the
+median has zero mean over 1850–1900 — the "modern baseline plus
+offset" approach. This preserves the modern-era uncertainty
+representation while reporting against preindustrial. Offsets:
+land +1.03 °C, ocean +0.49 °C.*
 
 ## Datasets
 
