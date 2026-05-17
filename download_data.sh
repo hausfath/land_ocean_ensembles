@@ -75,10 +75,16 @@ for chunk in 1-50 51-100 101-150 151-200; do
         "Ocean Data/HadSST4/HadSST.4.2.0.0_ensemble_members_${chunk}.zip"
 done
 
-echo "[2/4] ERSSTv6 (NOAAGT v6.1 aravg, ocean component)"
+echo "[2/4] ERSSTv6 — aravg central + 1000-member native ensemble"
 curl_get \
     "https://www.ncei.noaa.gov/data/noaa-global-surface-temperature/v6.1/access/timeseries/aravg.mon.ocean.90S.90N.v6.1.0.202604.asc" \
     "Ocean Data/ERSSTv6/aravg.mon.ocean.90S.90N.v6.1.0.202604.asc"
+# The 1000-member native ensemble (~135 GB total if pulled in full) is not
+# downloaded here. pull_ersstv6_members.py iterates one member at a time,
+# computing the global mean from each member's 2°×2° gridded Fortran-binary
+# file (~135 MB) and deleting the raw file before pulling the next. Peak
+# transient disk use is ~135 MB; final CSV is ~25 MB. Wall time ~2.7 hours.
+echo "  (ERSSTv6 native ensemble pulled iteratively by pull_ersstv6_members.py)"
 
 echo "[3/4] COBE-SST 2 — gridded monthly + 1991-2020 climatology"
 curl_get \
@@ -97,6 +103,7 @@ echo
 echo "Done. Next step:"
 echo "  python3 pull_dcent_lsat_members.py    # ~5 GB transient, deleted after extraction"
 echo "  python3 pull_dcent_sst_members.py     # ~5 GB transient, deleted after extraction"
+echo "  python3 pull_ersstv6_members.py       # ~135 MB transient, deleted after extraction, ~2.7 hr"
 echo "  python3 prepare_hadsst_global_ensemble.py"
 echo "  python3 prepare_cobe_global_mean.py"
 echo "  python3 build_land_ensemble.py"

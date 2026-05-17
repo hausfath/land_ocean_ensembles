@@ -19,7 +19,7 @@ structural uncertainty is decomposed by component. This memo concerns
 | # | Dataset | Native ensemble? | Uncertainty form | Time span | Native baseline | File(s) |
 |---|---------|------------------|------------------|-----------|-----------------|---------|
 | 1 | HadSST 4.2.0.0 | 200 native members (gridded; reduced to 200 global means in `prepare_hadsst_global_ensemble.py`) | ensemble of global means we compute ourselves; central + decomposed σ also available in CSV | 1850-01 – 2026-03 | 1961-1990 | `Ocean Data/HadSST4/HadSST.4.2.0.0_monthly_GLOBE.csv` (central) + 4 ensemble zips (members 1-50, 51-100, 101-150, 151-200) totalling ~1.7 GB |
-| 2 | ERSSTv6 (via NOAAGlobalTemp v6.1.0 aravg) | No | deterministic only — v6.1 aravg ocean variance columns are populated as `-999` | 1854-01 – 2026-04 | 1991-2020 (or 1971-2000 in legacy aravg framing) | `Ocean Data/ERSSTv6/aravg.mon.ocean.90S.90N.v6.1.0.202604.asc` |
+| 2 | ERSSTv6 (NOAA pre-release ensemble + aravg central) | 1000 native members (gridded; reduced to 1000 global means in `pull_ersstv6_members.py`) | ensemble of global means we compute ourselves; aravg deterministic retained as central anchor for years past native end | 1850-01 – 2024-12 (native); 1854-01 – 2026-04 (aravg central) | 1991-2020 | `Ocean Data/ERSSTv6/ERSSTv6_monthly_ensemble.csv` (1000 members) + `Ocean Data/ERSSTv6/aravg.mon.ocean.90S.90N.v6.1.0.202604.asc` (central) |
 | 3 | COBE-SST 2 | No | deterministic (analysis-error field exists in gridded but is not in the global mean) | 1850-01 – 2026-04 | 1991-2020 | `Ocean Data/COBE-SST2/COBE-SST2_global_monthly.csv` (derived by `prepare_cobe_global_mean.py` from `sst.mon.mean.nc` − `sst.mon.ltm.1991-2020.nc`) |
 | 4 | DCENT SST (DCENT v3.0 `sst` field) | 200 members (gridded; we reduce to 200 global means in `pull_dcent_sst_members.py`) | ensemble of global means we compute ourselves | 1850-01 – 2025-12 | 1982-2014 | `Ocean Data/DCENT SST/DCENT_SST_monthly_ensemble.csv` |
 
@@ -57,9 +57,10 @@ ensemble) by AR(1) noise per member — see Step 2.1 for the recipe.
 
 ## Step 2 — Build a per-dataset ensemble
 
-We use native counts where available (DCENT 200) and synthesize 200
-members for HadSST4 from its decomposed σ. For deterministic
-products we use a donor (Section 2.3).
+We use native counts where available (HadSST4 200 native bias members
++ noise terms, DCENT 200, ERSSTv6 1000 native through 2024). The one
+remaining deterministic-only product (COBE-SST2) is handled via a
+HadSST4 donor (Section 2.4).
 
 ### 2.1 HadSST4 — area-mean 200 native gridded members + add measurement/sampling noise
 
@@ -122,38 +123,95 @@ SST-marginal spread is therefore plausibly only ~5–15% narrower than
 a standalone SST product would show (vs. the ~10–30% narrowing we
 flag for DCLSAT). We apply no correction in v1.
 
-### 2.3 ERSSTv6 and COBE-SST2 — deterministic best estimate + HadSST4-donor uncertainty (with sparse-era σ inflation)
+### 2.3 ERSSTv6 — pull 1000 native NCEI members, compute global means; Option B frozen-offset past native end
 
-Both ERSSTv6 (via NOAAGlobalTemp aravg) and COBE-SST2 ship only a
-deterministic global-mean monthly time series in the form we can read.
-For uncertainty we use a donor approach analogous to NOAA Land in the
-LSAT methodology:
+The NCEI pre-release ERSSTv6 ensemble (Huang et al., 2025; obtained from
+`https://www.ncei.noaa.gov/pub/data/cmb/ersst/v5/tmp/ersstv6.ensemble/`)
+exposes 1000 gridded 2°×2° monthly NetCDF/Fortran-binary fields, each a
+full Monte-Carlo realization over ERSST's bias-correction parameter
+space (`smult`, `stdmin`, `stdmax`, `mbias`, `adjs/b/a`, `wt1*`, etc. —
+see `parameter.case.txt` in the source directory).
+
+We download each member's `sst2d.ano.1850.2024.1991-2020.ens.NNNN.dat`
+file (~135 MB each, Fortran sequential unformatted big-endian, 180×89
+grid, 2100 monthly records), compute the area-weighted (cos lat) global
+mean per month while masking the GrADS undef sentinel (-999.9), append
+the resulting (NNNN'th, 2100) monthly series to an in-memory ensemble,
+and **delete the raw .dat file before downloading the next member**.
+This keeps peak disk use at ~135 MB rather than ~135 GB. The final
+ensemble lands in `ERSSTv6_monthly_ensemble.csv` (2100 rows × 1002 cols:
+year, month, m0001..m1000); see `pull_ersstv6_members.py`.
+
+**Validation.** A 10-member subsample's annual median agreed with the
+published ERSSTv6 best-estimate (aravg) to RMSE 0.030 °C (max abs 0.085
+°C, mean bias +0.014 °C) over 1850–2024 — i.e., consistent with random
+subsample noise. Inter-member σ at 2024 is ~0.025 °C, comparable to
+HadSST4's 200-member σ at 2024 (~0.026 °C); pre-1900 σ grows to ~0.04
+°C, capturing the expected sparse-era widening.
+
+**Option B fallback past native end (boundary-year handling).** The
+native ensemble ends Dec 2024 but the build runs through 2025. For
+year y past the last native year y* (here y* = 2024):
+
+  σ_scale(y)        = σ_HadSST4(y) / σ_HadSST4(y*)
+  ensemble_median*  = nanmedian(native[y*, :])
+  member_m(y)       = central(y) + (native[y*, m] − ensemble_median*) × σ_scale(y)
+
+where `central(y)` is the published ERSSTv6 best-estimate from aravg
+(re-baselined to 1981-2010 member-wise to match the rest of the build).
+
+This is **Option B** (per-member frozen offset, σ-scaled by HadSST4
+delta). The rationale, traded off against the alternative donor-scatter
+approach (Option A), is:
+
+- Option A would create ~0.05–0.10 °C discontinuities in individual
+  member trajectories at the 2024→2025 boundary because each member's
+  2025 deviation would be randomly drawn from HadSST4 rather than
+  inherited from its own 2024 deviation. Trend statistics per member
+  ending in 2025 would carry spurious boundary noise.
+- Option B preserves per-member trajectory continuity. The trade is a
+  small under-coverage of any real 2024→2025 σ growth — addressed by
+  multiplying the carried-forward offset by HadSST4's σ ratio, which
+  reflects actual late-year coverage changes (e.g., the 2023–2025
+  drifter-fleet contraction).
+
+The post-native end is therefore an *extrapolation*, not an
+observation, and we **hard-fail** if the gap between the native
+ensemble's last year and `END_YEAR` is ≥ 2. Frozen-offset is only
+defensible for a single year; multi-year extrapolation requires
+revisiting the design (e.g., AR(1) decay of the per-member offsets,
+or returning to Option A for years > y* + 1). The threshold and the
+revisit-trigger message live in `build_ocean_ensemble.py:
+extend_with_frozen_offset`.
+
+### 2.4 COBE-SST2 — deterministic best estimate + HadSST4-donor uncertainty (with sparse-era σ inflation)
+
+COBE-SST2 ships only a deterministic global-mean monthly time series
+in the form we can read. For uncertainty we use a donor approach
+analogous to NOAA Land in the LSAT methodology:
 
 - Take HadSST4's native 200-member ensemble (Section 2.1),
   demean it (subtract the per-year ensemble mean), and rescale to
   match a target 1σ envelope. This gives a 200-member uncertainty
   ensemble that is anchored on HadSST4's structural uncertainty
   family.
-- Add the rescaled donor to ERSSTv6's (or COBE-SST2's) best estimate
-  on the common annual axis.
+- Add the rescaled donor to COBE-SST2's best estimate on the common
+  annual axis.
 
-**Choice of donor and rationale:** HadSST4 is the only SST product in
-this catalogue with a published structural uncertainty representation.
-It is the canonical in-situ SST reconstruction. Using HadSST4 as
-donor for both ERSSTv6 and COBE-SST2 is methodologically natural for
-ERSSTv6 (which is also in-situ-based and shares much of the same
-underlying data) and acceptable for COBE-SST2 (which adds satellite
-data in the modern era but uses the same in-situ archive in the tail).
-COBE-SST2's analysis-error field exists on the gridded NetCDF
-distributed by JMA/TCC but is **not publicly distributed in the NOAA
-PSL mirror** we use; we therefore cannot use it as a per-product
-target σ and fall back to HadSST4. Documented limitation: ERSSTv6 and
-COBE-SST2 contribute only their best-estimate signal, not independent
-uncertainty information.
+**Choice of donor and rationale:** HadSST4 is the canonical in-situ
+SST reconstruction with a published structural uncertainty
+representation. Using HadSST4 as donor for COBE-SST2 is acceptable
+because COBE-SST2 uses the same in-situ archive in the tail (it adds
+satellite data in the modern era). COBE-SST2's analysis-error field
+exists on the gridded NetCDF distributed by JMA/TCC but is **not
+publicly distributed in the NOAA PSL mirror** we use; we therefore
+cannot use it as a per-product target σ and fall back to HadSST4.
+Documented limitation: COBE-SST2 contributes only its best-estimate
+signal, not independent uncertainty information.
 
 **Target σ for rescaling — sparse-era inflated.** The base target σ is
 HadSST4's own annual σ. To partially compensate for the (uncaptured)
-extra structural uncertainty that ERSST and COBE bring from EOF /
+extra structural uncertainty that COBE brings from
 optimal-interpolation reconstruction in the sparse pre-satellite era,
 we **inflate the target σ by a year-dependent factor**:
 - pre-1920: 1.3× HadSST4 σ
@@ -162,15 +220,21 @@ we **inflate the target σ by a year-dependent factor**:
 
 This is a deliberate compensation, not a measurement. The
 sensitivity test version with inflation factor = 1.0× throughout
-(identity rescaling) is reported alongside.
+(identity rescaling) is reported alongside. Inflation is applied
+only to COBE; the native ERSSTv6 ensemble already carries its own
+sparse-era spread.
 
-## Step 3 — Re-baseline all four 200-member ensembles to 1981–2010
+## Step 3 — Re-baseline all four ensembles to 1981–2010
 
-For every member of every dataset:
+For every member of every dataset (HadSST4 200, DCENT 200, ERSSTv6
+1000, COBE-SST2 200):
 - subtract that member's own 1981–2010 mean.
 
 After this step all four ensembles share zero mean over 1981–2010 and
-are directly comparable.
+are directly comparable. The Option B post-native-end fallback for
+ERSSTv6 (Section 2.3) is applied *after* re-baselining, using the
+re-baselined aravg central series as the 2025 anchor — so the
+extrapolated 2025 members are also natively on the 1981-2010 baseline.
 
 ## Step 4 — Family tree weighting
 
@@ -192,43 +256,42 @@ All four leaves cover both the tail (1850–1995) and head (1996–2025)
 sub-periods, so there is no time-varying weight adjustment (unlike the
 LSAT tree, which redistributes GloSATLAT's weight post-2021).
 
-**Rationale and a forward-looking caveat.** A strict "lineage of
-uncertainty" reading of Thorne 2026 §3.2.5 would *down*-weight ERSSTv6
-and COBE-SST2 because their envelopes in v1 are donor-imputed from
-HadSST4 (NCEI does not currently publish a per-member ERSSTv6
-ensemble, and the COBE-SST2 analysis-error field on the JMA archive is
-not openly downloadable — see "Open issue" below). Half-weighting the
-two donor-imputed leaves was the stats-review recommendation under
-that strict reading.
+**Rationale.** As of v2 (May 2026), three of the four leaves carry
+their own native uncertainty template: HadSST4 (200-member native bias
+ensemble), DCENT SST (200-member dynamical-consistency ensemble), and
+ERSSTv6 (1000-member native parameter ensemble from NCEI pre-release).
+Only COBE-SST2 remains donor-imputed from HadSST4. Under the strict
+"lineage of uncertainty" reading of Thorne 2026 §3.2.5 — which would
+down-weight donor-imputed leaves — only COBE-SST2 would qualify for a
+half-weight; the other three would each carry 1/4. We keep equal 1/4
+weights at the leaf level for simplicity and because COBE-SST2's
+best-estimate trajectory is still a structurally independent product
+even with a borrowed σ template (the v1 stats-review recommendation to
+half-weight no longer applies once two of the three previously-donored
+leaves are native).
 
-We instead keep equal 1/4 weights deliberately, in anticipation that
-**ERSSTv6 will acquire its own native ensemble representation** in a
-future revision (likely via the NOAAGlobalTempv5/v6 500-member
-ensemble that Thorne et al. 2026 use as donor for ERSST-based products,
-or a future NCEI release of an ERSSTv6 ensemble proper). Once that
-ensemble is wired in, ERSSTv6 will contribute its own uncertainty
-template and the equal 1/4 weighting becomes the correct "structural
-lineage" tree without any further re-weighting.
+Effective independent uncertainty templates ≈ 3.5 (HadSST4, DCENT,
+ERSSTv6 native; COBE shares a quarter of HadSST4's template). This
+is a substantial improvement over v1 (~3.0 effective), where ~50% of
+the final ensemble's uncertainty traced back to HadSST4. The
+HadSST4-shaped contribution to the final 10k ensemble is now ~25%
+(HadSST4's own 1/4 leaf), plus the COBE-SST2 1/4 leaf's donor-borrowed
+spread = ~37.5% nominally HadSST4-shaped uncertainty, vs. ~75% in v1.
 
-The transient implication is that ~50% of v1's ensemble has
-HadSST4-shaped uncertainty wrapped around three different best
-estimates (HadSST4's own, ERSSTv6's, COBE-SST2's). This is flagged in
-the limitations section and the safe/unsafe-uses block.
-
-**Open issue (to revisit when ensembles become available):**
-- ERSSTv6 ensemble: not currently in NCEI's public `v6/access/` tree.
-  When obtained (from NCEI directly, or via Boyin Huang), switch
-  ERSSTv6 from "deterministic + HadSST4 donor" to its native ensemble.
+**Open issue (to revisit when additional ensembles become available):**
 - COBE-SST2 analysis-error: the JMA/TCC archive exposes an analysis
   error field but only via gated forms; if extractable, switch
   COBE-SST2's target σ from "HadSST4 σ" to "COBE-derived σ".
-- NOAAGlobalTempv5 500-member ensemble (Thorne donor) — available
-  locally in the parent `GMST ensemble/ManagedData/Data/NOAA_ensemble/`
-  but it is the *merged* GMST product, not SST-only. Using it as the
-  ERSSTv6 donor would change the uncertainty *template family* away
-  from HadSST4 toward NOAA — an improvement in structural-lineage
-  fidelity but with the asterisk that the ensemble is merged GMST not
-  SST-only and ends in 2016.
+- ERSSTv6 native ensemble: **resolved in v2** (1000-member NCEI
+  pre-release acquired from Boyin Huang). The v1 plan to use the
+  NOAAGlobalTempv5 500-member ensemble as a stand-in is no longer
+  needed.
+- Post-native-end fallback: the current Option B frozen-offset is
+  defensible for a single year (`gap == 1`). If ERSSTv6's native
+  ensemble falls multiple years behind `END_YEAR`, the build hard-fails
+  with a revisit message (`build_ocean_ensemble.py:
+  extend_with_frozen_offset`). Re-pull the native ensemble or replace
+  the fallback with a multi-year-capable design before continuing.
 
 **Note on asymmetry with the LSAT tree.** Both the LSAT tree and the
 SST tree use four "method families" (HOMOG/PHA/CRU-lineage/Dynamical
@@ -239,20 +302,22 @@ P=1/4. The result is symmetric for DCLSAT vs DCENT SST (both P=1/4)
 and for the family-level weights. This symmetry should be preserved
 when SST × LSAT are recombined downstream into a GMST ensemble.
 
-**Planned sensitivity tests (out of scope for v1):**
-- **Half-weight ERSSTv6 and COBE-SST2** (the alternative tree:
-  HadSST4 1/3, DCENT 1/3, ERSST 1/6, COBE 1/6). This is the
-  defensible interpretation under a strict "lineage of uncertainty"
-  reading of Thorne. Report as a sensitivity for transparency.
+**Planned sensitivity tests (out of scope for v2):**
+- **Half-weight COBE-SST2** (the only remaining donor-imputed leaf:
+  alternative tree HadSST4 2/7, ERSSTv6 2/7, DCENT 2/7, COBE 1/7).
+  Defensible interpretation under a strict "lineage of uncertainty"
+  reading of Thorne.
 - Single in-situ-only sub-family containing HadSST4, ERSSTv6,
-  COBE-SST2 at P=1/2 (split 2/4, 1/4, 1/4 within), DCENT at P=1/2 —
+  COBE-SST2 at P=1/2 (split 1/3, 1/3, 1/3 within), DCENT at P=1/2 —
   the most aggressive version, lumping all three in-situ-based
   products as one lineage.
-- Sparse-era σ inflation factor = 1.0× (no inflation, identity
-  rescaling) — to quantify how much the inflation contributes to tail
-  spread.
-- Switch ERSSTv6 donor from HadSST4 to the NOAAGlobalTempv5
-  500-member ensemble — to quantify the donor-choice sensitivity.
+- Sparse-era σ inflation factor = 1.0× for COBE (no inflation,
+  identity rescaling) — to quantify how much the inflation
+  contributes to tail spread.
+- Option B variants: AR(1) decay of the per-member offset across the
+  fallback year(s), or returning to the v1 Option-A donor-scatter
+  approach for the post-native-end year, to quantify the fallback-
+  design sensitivity.
 - Splice at the 1995/96 midpoint of the 1981–2010 reference period
   (matching Thorne's GMST approach).
 
@@ -260,10 +325,15 @@ when SST × LSAT are recombined downstream into a GMST ensemble.
 
 For each of 10,000 draws:
 1. Pick a leaf dataset using the leaf weights from Step 4.
-2. From that leaf's (200-member, already-rebaselined) ensemble, sample
-   one member uniformly at random.
+2. From that leaf's already-rebaselined ensemble (HadSST4 200, DCENT
+   200, ERSSTv6 1000, COBE-SST2 200), sample one member uniformly at
+   random.
 3. Take that member's full 1850–2025 annual time series.
 4. Record it as one ensemble member.
+
+Heterogeneous leaf sizes (1000 vs 200) are handled by the
+`build_ocean_ensemble.py` sampler — it draws independently from each
+leaf with the leaf-specific member count.
 
 The result is a 176 × 10,001 CSV (year + 10,000 anomaly columns).
 Year-by-year statistics (mean, 2.5/97.5 percentiles, SD) are then
@@ -274,14 +344,13 @@ leaves cover the full record.
 
 ## Known limitations
 
-1. **Two of four products contribute no independent uncertainty in v1.**
-   ERSSTv6 and COBE-SST2 are donor-imputed; only their best estimates
-   are independent. With equal 1/4 leaf weights, ~50% of the final
-   ensemble's uncertainty originates from HadSST4-shaped donor spread
-   wrapped around three different best-estimate trajectories. This is a
-   *transitional* arrangement (see Step 4 rationale) that resolves once
-   ERSSTv6 acquires its own ensemble representation; users should not
-   read the v1 envelope as four-way independent structural diversity.
+1. **One of four products contributes no independent uncertainty in v2.**
+   COBE-SST2 is donor-imputed; only its best estimate is independent.
+   With equal 1/4 leaf weights, ~25% of the final ensemble's
+   uncertainty originates from a HadSST4-shaped donor spread wrapped
+   around COBE-SST2's best estimate. (ERSSTv6, HadSST4, DCENT all
+   carry their own native ensembles in v2; this is down from ~75%
+   nominally-HadSST4-shaped uncertainty in v1.)
 2. **HadSST4 bias dimension is native; measurement / correlated /
    coverage dimensions are layered on as Gaussian noise** with the
    AR(1) and perfect-time-correlation approximations from the LSAT
@@ -297,10 +366,18 @@ leaves cover the full record.
    DCENT SST agree closely with each other, then half of the 10k are
    members of those two ensembles and the spread is set by ~400
    distinct trajectories).
-6. **HadSST4 as the universal donor** propagates HadSST4's bias and
-   coverage uncertainty structure into ERSSTv6 and COBE-SST2 envelopes
-   — any HadSST4-specific shape (e.g. its bias-CI assumption about
-   bucket vs. engine-room mixtures) bleeds into 50% of the ensemble.
+6. **HadSST4 still influences ~37.5% of the v2 ensemble** when you
+   count its own 1/4 leaf plus COBE-SST2's HadSST4-donored 1/4 leaf —
+   so any HadSST4-specific shape (e.g. its bias-CI assumption about
+   bucket vs. engine-room mixtures) still bleeds into roughly a third
+   of the ensemble. This is down from ~75% in v1 but remains material.
+7. **ERSSTv6 boundary year (2025) is an extrapolation, not an
+   observation.** Each 2025 member inherits its 2024 deviation from
+   the 1000-member median (σ-scaled by HadSST4's year-on-year σ
+   ratio). Members maintain trajectory continuity at the boundary,
+   but late-year σ growth from non-coverage sources (e.g., a sudden
+   bias-correction revision specific to 2025) is not captured. Hard-
+   fails if the gap to `END_YEAR` reaches 2 years.
 
 ## Safe vs unsafe downstream uses
 
@@ -330,7 +407,8 @@ When the SST and LSAT 10,000-member ensembles are combined to produce
 a structural-uncertainty GMST ensemble, draws should be made
 **independently** from each file:
 - LSAT uses **DCLSAT** as donor for its imputed leaf (NOAA Land).
-- SST uses **HadSST4** as donor for its imputed leaves (ERSSTv6, COBE-SST2).
+- SST uses **HadSST4** as donor for its one remaining imputed leaf
+  (COBE-SST2 in v2).
 - No donor product is shared between LSAT and SST, so cross-component
   imputation correlation is zero by construction.
 
@@ -361,7 +439,10 @@ provenance.
   temperature change from 1850: HadSST4*, JGR-Atmos 124(14) — for the
   200-member ensemble and uncertainty decomposition.
 - Huang, B. *et al.* (2025), *NOAA ERSSTv6*, J. Climate Parts I & II —
-  for the ERSSTv6 methodology.
+  for the ERSSTv6 methodology; the 1000-member parameter ensemble
+  (pre-release) is hosted at
+  `https://www.ncei.noaa.gov/pub/data/cmb/ersst/v5/tmp/ersstv6.ensemble/`
+  with contact `boyin.huang@noaa.gov`.
 - Hirahara, S., Ishii, M., & Fukuda, Y. (2014), *Centennial-scale SST
   analyses*, J. Climate — for COBE-SST2 methodology.
 - Chan, D. *et al.* (2024), DCENT, Scientific Data 11 — for the
