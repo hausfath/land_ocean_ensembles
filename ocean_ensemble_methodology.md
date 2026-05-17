@@ -123,7 +123,7 @@ SST-marginal spread is therefore plausibly only ~5–15% narrower than
 a standalone SST product would show (vs. the ~10–30% narrowing we
 flag for DCLSAT). We apply no correction in v1.
 
-### 2.3 ERSSTv6 — pull 1000 native NCEI members, compute global means; Option B frozen-offset past native end
+### 2.3 ERSSTv6 — pull 1000 native NCEI members, compute global means; frozen-offset fallback past native end
 
 The NCEI pre-release ERSSTv6 ensemble (Huang et al., 2025; obtained from
 `https://www.ncei.noaa.gov/pub/data/cmb/ersst/v5/tmp/ersstv6.ensemble/`)
@@ -149,9 +149,9 @@ subsample noise. Inter-member σ at 2024 is ~0.025 °C, comparable to
 HadSST4's 200-member σ at 2024 (~0.026 °C); pre-1900 σ grows to ~0.04
 °C, capturing the expected sparse-era widening.
 
-**Option B fallback past native end (boundary-year handling).** The
-native ensemble ends Dec 2024 but the build runs through 2025. For
-year y past the last native year y* (here y* = 2024):
+**Frozen-offset fallback past native end (boundary-year handling).**
+The native ensemble ends Dec 2024 but the build runs through 2025.
+For year y past the last native year y* (here y* = 2024):
 
   σ_scale(y)        = σ_HadSST4(y) / σ_HadSST4(y*)
   ensemble_median*  = nanmedian(native[y*, :])
@@ -160,29 +160,24 @@ year y past the last native year y* (here y* = 2024):
 where `central(y)` is the published ERSSTv6 best-estimate from aravg
 (re-baselined to 1981-2010 member-wise to match the rest of the build).
 
-This is **Option B** (per-member frozen offset, σ-scaled by HadSST4
-delta). The rationale, traded off against the alternative donor-scatter
-approach (Option A), is:
-
-- Option A would create ~0.05–0.10 °C discontinuities in individual
-  member trajectories at the 2024→2025 boundary because each member's
-  2025 deviation would be randomly drawn from HadSST4 rather than
-  inherited from its own 2024 deviation. Trend statistics per member
-  ending in 2025 would carry spurious boundary noise.
-- Option B preserves per-member trajectory continuity. The trade is a
-  small under-coverage of any real 2024→2025 σ growth — addressed by
-  multiplying the carried-forward offset by HadSST4's σ ratio, which
-  reflects actual late-year coverage changes (e.g., the 2023–2025
-  drifter-fleet contraction).
+Each member's 2024 deviation from the ensemble median is carried
+forward to 2025 (and rescaled by HadSST4's year-on-year σ ratio).
+This preserves per-member trajectory continuity at the boundary —
+the alternative of redrawing each member's 2025 deviation
+independently would create ~0.05–0.10 °C discontinuities at 2024→2025
+and inject spurious noise into per-member trend statistics ending in
+2025. The σ-scaling factor captures any real coverage-driven σ growth
+(e.g., the 2023–2025 drifter-fleet contraction shows up in HadSST4's
+σ ratio).
 
 The post-native end is therefore an *extrapolation*, not an
 observation, and we **hard-fail** if the gap between the native
 ensemble's last year and `END_YEAR` is ≥ 2. Frozen-offset is only
 defensible for a single year; multi-year extrapolation requires
 revisiting the design (e.g., AR(1) decay of the per-member offsets,
-or returning to Option A for years > y* + 1). The threshold and the
-revisit-trigger message live in `build_ocean_ensemble.py:
-extend_with_frozen_offset`.
+or restoring an explicit donor-scatter mechanism for years > y* + 1).
+The threshold and the revisit-trigger message live in
+`build_ocean_ensemble.py: extend_with_frozen_offset`.
 
 ### 2.4 COBE-SST2 — deterministic best estimate + HadSST4-donor uncertainty (with sparse-era σ inflation)
 
@@ -231,8 +226,8 @@ For every member of every dataset (HadSST4 200, DCENT 200, ERSSTv6
 - subtract that member's own 1981–2010 mean.
 
 After this step all four ensembles share zero mean over 1981–2010 and
-are directly comparable. The Option B post-native-end fallback for
-ERSSTv6 (Section 2.3) is applied *after* re-baselining, using the
+are directly comparable. The post-native-end frozen-offset fallback
+for ERSSTv6 (Section 2.3) is applied *after* re-baselining, using the
 re-baselined aravg central series as the 2025 anchor — so the
 extrapolated 2025 members are also natively on the 1981-2010 baseline.
 
@@ -286,10 +281,10 @@ spread = ~37.5% nominally HadSST4-shaped uncertainty, vs. ~75% in v1.
   pre-release acquired from Boyin Huang). The v1 plan to use the
   NOAAGlobalTempv5 500-member ensemble as a stand-in is no longer
   needed.
-- Post-native-end fallback: the current Option B frozen-offset is
-  defensible for a single year (`gap == 1`). If ERSSTv6's native
-  ensemble falls multiple years behind `END_YEAR`, the build hard-fails
-  with a revisit message (`build_ocean_ensemble.py:
+- Post-native-end fallback: the current frozen-offset is defensible
+  for a single year (`gap == 1`). If ERSSTv6's native ensemble falls
+  multiple years behind `END_YEAR`, the build hard-fails with a
+  revisit message (`build_ocean_ensemble.py:
   extend_with_frozen_offset`). Re-pull the native ensemble or replace
   the fallback with a multi-year-capable design before continuing.
 
@@ -314,10 +309,10 @@ when SST × LSAT are recombined downstream into a GMST ensemble.
 - Sparse-era σ inflation factor = 1.0× for COBE (no inflation,
   identity rescaling) — to quantify how much the inflation
   contributes to tail spread.
-- Option B variants: AR(1) decay of the per-member offset across the
-  fallback year(s), or returning to the v1 Option-A donor-scatter
-  approach for the post-native-end year, to quantify the fallback-
-  design sensitivity.
+- Frozen-offset fallback variants: AR(1) decay of the per-member
+  offset across the fallback year(s), or restoring an explicit
+  donor-scatter mechanism for the post-native-end year, to quantify
+  the fallback-design sensitivity.
 - Splice at the 1995/96 midpoint of the 1981–2010 reference period
   (matching Thorne's GMST approach).
 

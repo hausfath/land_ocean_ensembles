@@ -50,7 +50,7 @@ land +1.03 °C, ocean +0.48 °C.*
 | Dataset | Native ensemble | Time | Source |
 |---------|-----------------|------|--------|
 | HadSST 4.2.0.0 | 200 native bias members + σ noise | 1850–2026 | `metoffice.gov.uk/hadobs/hadsst4` |
-| ERSSTv6 (NOAA pre-release ensemble) | 1000 native members (1850–2024) + Option B fallback for 2025 | 1850–2025 | `ncei.noaa.gov/pub/data/cmb/ersst/v5/tmp/ersstv6.ensemble/` (contact `boyin.huang@noaa.gov`) |
+| ERSSTv6 (NOAA pre-release ensemble) | 1000 native members (1850–2024) + frozen-offset fallback for 2025 | 1850–2025 | `ncei.noaa.gov/pub/data/cmb/ersst/v5/tmp/ersstv6.ensemble/` (contact `boyin.huang@noaa.gov`) |
 | COBE-SST 2 | No (HadSST4 donor) | 1850–2026 | NOAA PSL mirror of JMA |
 | DCENT SST (v3.0) | 200 native members | 1850–2025 | Harvard Dataverse `doi:10.7910/DVN/NU4UGW` |
 
