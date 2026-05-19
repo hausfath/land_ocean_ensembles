@@ -288,14 +288,17 @@ spread = ~37.5% nominally HadSST4-shaped uncertainty, vs. ~75% in v1.
   extend_with_frozen_offset`). Re-pull the native ensemble or replace
   the fallback with a multi-year-capable design before continuing.
 
-**Note on asymmetry with the LSAT tree.** Both the LSAT tree and the
-SST tree use four "method families" (HOMOG/PHA/CRU-lineage/Dynamical
-on the LSAT side; HadSST/ERSST/COBE/Dynamical on the SST side). On
-LSAT the CRU-lineage family splits two ways (CRUTEM5 + GloSATLAT) so
-its leaves carry P=1/8 each; all other LSAT and SST leaves carry
-P=1/4. The result is symmetric for DCLSAT vs DCENT SST (both P=1/4)
-and for the family-level weights. This symmetry should be preserved
-when SST × LSAT are recombined downstream into a GMST ensemble.
+**Note on asymmetry with the LSAT tree.** The LSAT tree uses five
+method families (HOMOG/PHA/CRU-lineage/Dynamical/CMA-homogenization)
+each at P=1/5, while the SST tree uses four (HadSST/ERSST/COBE/Dynamical)
+each at P=1/4. On the LSAT side the CRU-lineage family splits two ways
+(CRUTEM5 + GloSATLAT) so its leaves carry P=1/10 each; all other LSAT
+leaves carry P=1/5. The dynamical-constraint family is the only one
+present on both sides (DCLSAT at P=1/5 on land; DCENT SST at P=1/4 on
+ocean). This asymmetry is intentional — the SST catalogue lacks an
+analogue of the CMA-homogenization family — and should not be
+"corrected" when SST × LSAT are recombined into a GMST ensemble:
+draws should still be independent across sides.
 
 **Planned sensitivity tests (out of scope for v2):**
 - **Half-weight COBE-SST2** (the only remaining donor-imputed leaf:

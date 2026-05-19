@@ -37,6 +37,7 @@ def main() -> None:
         "glosatlat":      "#74add1",
         "dclsat":         "#5aae61",
         "noaa_land":      "#fdae61",
+        "c_lsat":         "#984ea3",
     }
     labels = {
         "berkeley_earth": "Berkeley Earth Highres",
@@ -44,6 +45,7 @@ def main() -> None:
         "glosatlat":      "GloSATLAT (1850-2021)",
         "dclsat":         "DCLSAT (DCENT v3.0 land)",
         "noaa_land":      "NOAA Land v6.1",
+        "c_lsat":         "C-LSAT 2.1 (CMA)",
     }
     for name, color in colors.items():
         ax.plot(

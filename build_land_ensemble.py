@@ -1,6 +1,6 @@
 """
 Build a 10,000-member ensemble of annual global-mean land surface air
-temperature (LSAT) anomaly, 1850-2025, by combining five LSAT products
+temperature (LSAT) anomaly, 1850-2025, by combining six LSAT products
 through a structural-method family tree with donor-imputed uncertainty
 where native ensembles are not available.
 

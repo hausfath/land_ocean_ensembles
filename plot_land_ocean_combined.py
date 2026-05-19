@@ -123,7 +123,7 @@ def main() -> None:
     # Footer annotation
     footer = (
         "Temperature anomalies relative to 1850-1900 average; 5th-95th percentile range computed on 1981-2010 baseline\n"
-        "Land ensemble from 5 LSAT datasets; ocean ensemble from 4 SST datasets (family-tree weighted, 10,000 members each)"
+        "Land ensemble from 6 LSAT datasets; ocean ensemble from 4 SST datasets (family-tree weighted, 10,000 members each)"
     )
     ax.text(0.99, 0.04, footer, transform=ax.transAxes,
             ha="right", va="bottom", fontsize=8, color="0.30",
