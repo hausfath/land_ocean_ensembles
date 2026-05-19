@@ -55,6 +55,53 @@ ensemble) by AR(1) noise per member — see Step 2.1 for the recipe.
    mean over 1981–2010** — matching the LSAT methodology and the
    Thorne choice.
 
+### Note on sea-ice region handling
+
+We do **not** impose a consistent treatment of sea-ice-covered cells
+across the four SST products. Each product's native convention
+propagates through the area-weighted global-mean step in the prep
+scripts (`prepare_hadsst_global_ensemble.py`, `pull_dcent_sst_members.py`,
+`pull_ersstv6_members.py`, `prepare_cobe_global_mean.py`), all of which
+use a `cos(lat)` weighting over `isfinite` cells (plus an explicit
+`> -50 °C` undef filter for ERSSTv6's GrADS `-999.9` sentinel).
+
+| Product | Sea-ice handling in source | Effective handling in our build |
+|---|---|---|
+| **HadSST 4.2.0.0** | NaN over ice (in-situ only — no obs there) | **ice cells excluded** from global mean |
+| **ERSSTv6** | `-999.9` undef sentinel over fully-ice cells; EOF reconstruction extends into partial-ice cells | **fully-ice excluded; partial-ice included as reconstructed SST** |
+| **COBE-SST 2** | Fills with **−1.8 °C** (freezing point of seawater) wherever ice is present (verified empirically: 53 Arctic cells exactly at −1.8 °C in Jan 2024) | **ice cells INCLUDED, with the −1.8 °C placeholder** |
+| **DCENT SST** | NaN over land/ice (DCENT reconstructs only over open-water cells per its documentation) | **ice cells excluded** |
+
+This creates two systematic asymmetries that are not nuisance — they
+are part of the structural diversity our family tree is meant to
+represent — but worth surfacing:
+
+1. **Different denominators.** COBE's global-ocean denominator is
+   approximately constant in time (it includes ice area at −1.8 °C);
+   the other three products' denominators *grow* as polar ice retreats
+   (previously-NaN cells become observable open ocean). As Arctic ice
+   has receded since ~1980, the modern-era global means of HadSST4 /
+   ERSSTv6 / DCENT pick up newly-emerged cold-water cells that COBE
+   was already counting at −1.8 °C — exerting a small modern-era
+   cooling bias on those three relative to COBE.
+2. **Edge-of-ice-retreat sign reversal.** Cells transitioning from
+   ice-covered to ice-free move from {−1.8 °C placeholder | NaN} to
+   their actual seasonal-mean SST. For COBE the transition appears as
+   a real anomaly relative to the −1.8 °C placeholder; for the other
+   three the transition appears as a new cell entering the denominator.
+   These produce different signals at the same geographic location.
+
+**Magnitude:** in practice this contributes ~0.01–0.05 °C of
+cross-product disagreement in the modern era, comparable in size to
+the bias-correction uncertainty within HadSST4's own native bias
+ensemble. We do not attempt to harmonise this asymmetry; the
+family-tree treats it as structural diversity. If a future revision
+wanted to *remove* it, the cleanest route would be to re-aggregate
+each product on a common ice-aware mask (e.g., HadISST ice fraction)
+and apply a consistent rule for ice-cell treatment — that would
+collapse this dimension of cross-product spread but at the cost of
+suppressing genuine methodological diversity.
+
 ## Step 2 — Build a per-dataset ensemble
 
 We use native counts where available (HadSST4 200 native bias members
@@ -376,6 +423,12 @@ leaves cover the full record.
    but late-year σ growth from non-coverage sources (e.g., a sudden
    bias-correction revision specific to 2025) is not captured. Hard-
    fails if the gap to `END_YEAR` reaches 2 years.
+8. **Sea-ice region handling is not harmonised across products**
+   (see Step 1 "Note on sea-ice region handling" for the per-product
+   convention table). COBE-SST 2 includes ice cells at a −1.8 °C
+   placeholder; the other three exclude them. This contributes
+   ~0.01–0.05 °C of modern-era cross-product disagreement that the
+   family tree absorbs as structural diversity rather than reconciling.
 
 ## Safe vs unsafe downstream uses
 
