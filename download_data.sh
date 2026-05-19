@@ -54,13 +54,30 @@ curl_get \
     "https://dataverse.harvard.edu/api/access/datafile/10393657" \
     "Land Data/DCLSAT/DCENT_monthly_climatology_1982_2014.nc"
 
-echo "[5/5] NOAA Land v6.1.0 — aravg monthly + annual, land 90S-90N"
+echo "[5/6] NOAA Land v6.1.0 — aravg monthly + annual, land 90S-90N"
 curl_get \
     "https://www.ncei.noaa.gov/data/noaa-global-surface-temperature/v6.1/access/timeseries/aravg.mon.land.90S.90N.v6.1.0.202604.asc" \
     "Land Data/NOAA Land/aravg.mon.land.90S.90N.v6.1.0.202604.asc"
 curl_get \
     "https://www.ncei.noaa.gov/data/noaa-global-surface-temperature/v6.1/access/timeseries/aravg.ann.land.90S.90N.v6.1.0.202604.asc" \
     "Land Data/NOAA Land/aravg.ann.land.90S.90N.v6.1.0.202604.asc"
+
+echo "[6/6] C-LSAT 2.1 (Sun et al. / CMA-homogenization)"
+# The 5°×5° gridded NetCDF is hosted via the Sun Yat-sen group's portal at
+# gwpu.net (linked from http://www.gwpu.net/en/h-col-103.html) and on figshare
+# (10.6084/m9.figshare.28255394). The gwpu.net portal has been the timelier of
+# the two — the figshare deposit was frozen at the ESSD 2025 publication with
+# 1901-2023 coverage, but a separate extended NetCDF covering 1850-01 through
+# 2025-12 has been distributed via gwpu.net. We pull the extended version.
+# The portal currently routes downloads through a JS-rendered page that
+# `curl` cannot follow directly — fetch in a browser and place at:
+#     Land Data/C-LSAT/China-LSAT2.1_tavg.nc
+echo "  (China-LSAT2.1_tavg.nc — manual download from gwpu.net required)"
+if [ ! -f "Land Data/C-LSAT/China-LSAT2.1_tavg.nc" ]; then
+    echo "  WARNING: Land Data/C-LSAT/China-LSAT2.1_tavg.nc not found."
+    echo "    Download manually from http://www.gwpu.net/en/h-col-103.html"
+    echo "    and place at that path before running prepare_c_lsat_global_mean.py"
+fi
 
 echo
 echo "==== OCEAN ===="
@@ -106,5 +123,6 @@ echo "  python3 pull_dcent_sst_members.py     # ~5 GB transient, deleted after e
 echo "  python3 pull_ersstv6_members.py       # ~135 MB transient, deleted after extraction, ~2.7 hr"
 echo "  python3 prepare_hadsst_global_ensemble.py"
 echo "  python3 prepare_cobe_global_mean.py"
+echo "  python3 prepare_c_lsat_global_mean.py"
 echo "  python3 build_land_ensemble.py"
 echo "  python3 build_ocean_ensemble.py"

@@ -2,7 +2,7 @@
 
 10,000-member annual ensembles of **global land surface air temperature
 (LSAT)** and **global sea surface temperature (SST)**, 1850–2025, built
-from five LSAT products and four SST products via a Thorne et al. (2026)
+from six LSAT products and four SST products via a Thorne et al. (2026)
 style family-tree weighting. Each component product contributes either a
 native ensemble or a σ-synthesized / donor-imputed pseudo-ensemble; the
 final 10,000 draws sample across products by equal-weight method
@@ -19,11 +19,12 @@ component.
 
 | Year | LSAT median | LSAT 5–95% | SST median | SST 5–95% |
 |------|------------:|----------:|----------:|---------:|
-| 1850 | −0.21 °C    | −0.72 to +0.44 | −0.01 °C | −0.50 to +0.24 |
-| 1900 | +0.34 °C    | +0.11 to +0.57 | +0.09 °C | −0.10 to +0.21 |
-| 1950 | +0.22 °C    | +0.12 to +0.28 | +0.05 °C | −0.05 to +0.26 |
-| 2000 | +1.03 °C    | +1.01 to +1.05 | +0.47 °C | +0.46 to +0.48 |
-| 2024 | +2.29 °C    | +2.16 to +2.40 | +1.08 °C | +1.04 to +1.14 |
+| 1850 | −0.17 °C    | −0.68 to +0.45 | −0.01 °C | −0.50 to +0.24 |
+| 1900 | +0.34 °C    | +0.08 to +0.58 | +0.09 °C | −0.10 to +0.21 |
+| 1950 | +0.22 °C    | +0.13 to +0.29 | +0.05 °C | −0.05 to +0.26 |
+| 2000 | +1.05 °C    | +1.01 to +1.08 | +0.47 °C | +0.46 to +0.48 |
+| 2024 | +2.29 °C    | +2.18 to +2.41 | +1.08 °C | +1.04 to +1.14 |
+| 2025 | +2.11 °C    | +1.98 to +2.25 | — | — |
 
 *Anomalies relative to the 1850–1900 average. Percentiles are computed
 on the 1981–2010 modern baseline (where the ensembles have minimum
@@ -31,11 +32,11 @@ spread by construction) and then shifted by a constant offset so the
 median has zero mean over 1850–1900 — the "modern baseline plus
 offset" approach. This preserves the modern-era uncertainty
 representation while reporting against preindustrial. Offsets:
-land +1.03 °C, ocean +0.48 °C.*
+land +1.04 °C, ocean +0.48 °C.*
 
 ## Datasets
 
-### LSAT (5 products)
+### LSAT (6 products)
 
 | Dataset | Native ensemble | Time | Source |
 |---------|-----------------|------|--------|
@@ -43,7 +44,8 @@ land +1.03 °C, ocean +0.48 °C.*
 | CRUTEM 5.1.0.0 | No (200 synth from σ) | 1850–2026 | `metoffice.gov.uk/hadobs/crutem5` |
 | GloSATLAT 1.0.0.0 | No (200 synth from σ) | 1781–2021 | CEDA (`catalogue.ceda.ac.uk`) |
 | DCLSAT (DCENT v3.0 land field) | 200 native members | 1850–2025 | Harvard Dataverse `doi:10.7910/DVN/NU4UGW` |
-| NOAA Land v6.1.0 | No (DCLSAT donor) | 1850–2026 | `ncei.noaa.gov/.../noaa-global-surface-temperature/v6.1` |
+| NOAA Land v6.1.0 | No (DCLSAT donor, m 1–100) | 1850–2026 | `ncei.noaa.gov/.../noaa-global-surface-temperature/v6.1` |
+| C-LSAT 2.1 (CMA homogenization) | No (DCLSAT donor, m 101–200) | 1850–2025 | `gwpu.net` / [figshare:28255394](https://doi.org/10.6084/m9.figshare.28255394) |
 
 ### SST (4 products)
 
@@ -84,6 +86,7 @@ land_ocean_temps/
 ├── pull_ersstv6_members.py           # data prep: ERSSTv6 1000 native members
 ├── prepare_hadsst_global_ensemble.py # data prep: HadSST4 gridded → 200 globals
 ├── prepare_cobe_global_mean.py       # data prep: COBE-SST2 NetCDF → anomaly CSV
+├── prepare_c_lsat_global_mean.py     # data prep: C-LSAT 2.1 NetCDF → anomaly CSV
 ├── dcent_member_fileids.json         # Harvard Dataverse manifest for DCENT v3.0
 │
 ├── build_land_ensemble.py            # core: 10,000-member LSAT builder
@@ -135,6 +138,7 @@ python3 pull_dcent_sst_members.py             # ~15 min, ~5 GB transient
 python3 pull_ersstv6_members.py               # ~2.7 hr, ~135 MB transient (iterative)
 python3 prepare_hadsst_global_ensemble.py     # ~30 s
 python3 prepare_cobe_global_mean.py           # ~5 s
+python3 prepare_c_lsat_global_mean.py         # ~2 s
 ```
 
 These read from `Land Data/` and `Ocean Data/` and write derived CSV

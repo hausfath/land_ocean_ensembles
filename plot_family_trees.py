@@ -17,13 +17,14 @@ ROOT = Path(__file__).parent
 
 
 # ---------- tree definitions ---------------------------------------------
-# Each top-level branch is one method family (equal P=1/4 at root).
-# Within the CRU-lineage family the two leaves share P=1/8 each.
+# Each top-level branch is one method family (equal P=1/5 at root).
+# Within the CRU-lineage family the two leaves share P=1/10 each.
 LAND_TREE = [
     "berkeley_earth",          # HOMOG / SCALPEL family
     "noaa_land",               # PAIRWISE PHA family
     ["crutem5", "glosatlat"],  # CRU-lineage family
     "dclsat",                  # DYNAMICAL-CONSTRAINT family
+    "c_lsat",                  # CMA-HOMOGENIZATION family
 ]
 
 OCEAN_TREE = [
@@ -36,10 +37,11 @@ OCEAN_TREE = [
 
 LAND_LEAVES = {
     "berkeley_earth": ("Berkeley Earth Highres",  "1750–2026", "10 native members"),
-    "noaa_land":      ("NOAAGlobalTemp Land v6.1","1850–2026", "+ DCLSAT pseudo-ensemble"),
+    "noaa_land":      ("NOAAGlobalTemp Land v6.1","1850–2026", "+ DCLSAT (m 1-100) pseudo-ensemble"),
     "crutem5":        ("CRUTEM 5.1.0.0",          "1850–2026", "+ synth 200 from σ components"),
     "glosatlat":      ("GloSATLAT 1.0.0.0",       "1781–2021", "+ synth 200 from σ components"),
     "dclsat":         ("DCLSAT (DCENT v3.0 land)","1850–2025", "200 native members"),
+    "c_lsat":         ("C-LSAT 2.1 (CMA)",        "1850–2025", "+ DCLSAT (m 101-200) pseudo-ensemble"),
 }
 
 OCEAN_LEAVES = {
@@ -174,9 +176,9 @@ def main():
            root_title="Land LSAT ensemble",
            root_subtitle="1850–2025  (family-tree weighted)",
            fig_title=("Land surface air temperature family tree\n"
-                      "(5 LSAT products, equal-weight method families)"),
+                      "(6 LSAT products, 5 equal-weight method families)"),
            out_path=ROOT / "family_tree_land.png",
-           figsize=(13, 7))
+           figsize=(13, 8))
 
     render(OCEAN_TREE, OCEAN_LEAVES,
            root_title="Ocean SST ensemble",

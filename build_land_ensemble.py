@@ -227,6 +227,27 @@ def load_noaa_land(donor_ensemble: np.ndarray, target_sigma: np.ndarray, rng: np
     return annual_central[:, None] + donor_scaled
 
 
+def load_c_lsat(donor_ensemble: np.ndarray, target_sigma: np.ndarray, rng: np.random.Generator) -> np.ndarray:
+    """C-LSAT 2.1 (Sun et al. / Li, Sun Yat-sen University; CMA-homogenization
+    lineage) best estimate + DCLSAT-donor-imputed uncertainty.
+
+    Mirrors `load_noaa_land`. The caller MUST pass a DISJOINT slice of the
+    DCLSAT donor relative to NOAA Land (NOAA Land draws from members 1-100,
+    C-LSAT 2.1 from 101-200), so the two donor-imputed LSAT leaves do not
+    share per-member trajectory shape — addresses the stats-review concern
+    that two of six leaves would otherwise carry shape-correlated envelopes.
+    """
+    path = DATA / "C-LSAT" / "C-LSAT2.1_global_monthly.csv"
+    df = pd.read_csv(path)
+    df = df[(df["year"] >= START_YEAR) & (df["year"] <= END_YEAR)]
+    annual_central = reduce_monthly_to_annual(df["anomaly"].values[:, None], df["year"].values)[:, 0]
+    donor_demeaned = donor_ensemble - np.nanmean(donor_ensemble, axis=1, keepdims=True)
+    donor_sigma = np.nanstd(donor_ensemble, axis=1, ddof=1)
+    rescale = np.where(donor_sigma > 0, target_sigma / donor_sigma, 0.0)[:, None]
+    donor_scaled = donor_demeaned * rescale
+    return annual_central[:, None] + donor_scaled
+
+
 def target_sigma_from_glosat(glosat_ensemble: np.ndarray, crutem_ensemble: np.ndarray) -> np.ndarray:
     """Build a 1850-2025 annual target σ time series, using GloSATLAT's spread
     where available (1850-2021) and CRUTEM5's spread for 2022-2025. For the
@@ -242,22 +263,30 @@ def target_sigma_from_glosat(glosat_ensemble: np.ndarray, crutem_ensemble: np.nd
 
 
 # ---------- family tree ----------
-# Leaves and their P-of-leaf for years where all 5 are available.
+# Five method families, each at 1/5 weight (Thorne et al. 2026 "equal-weight
+# method families" principle):
+#   - Berkeley Earth   (HOMOG/SCALPEL)
+#   - NOAA Land        (PHA)
+#   - CRU-lineage      (CRUTEM5 1/10 + GloSATLAT 1/10 = 1/5)
+#   - DCLSAT           (Dynamical-Constraint)
+#   - C-LSAT 2.1       (CMA-homogenization)
 TREE_FULL = {
-    "berkeley_earth": 0.25,
-    "noaa_land":      0.25,
-    "dclsat":         0.25,
-    "crutem5":        0.125,
-    "glosatlat":      0.125,
+    "berkeley_earth": 0.20,
+    "noaa_land":      0.20,
+    "dclsat":         0.20,
+    "crutem5":        0.10,
+    "glosatlat":      0.10,
+    "c_lsat":         0.20,
 }
-# For 2022-2025 (GloSATLAT absent), redistribute its 0.125 to CRUTEM5 (the
-# other CRU-lineage leaf) so CRU-lineage family total stays 0.25.
+# For 2022-2025 (GloSATLAT absent), redistribute its 0.10 to CRUTEM5 (the
+# other CRU-lineage leaf) so CRU-lineage family total stays 0.20.
 TREE_NO_GLOSAT = {
-    "berkeley_earth": 0.25,
-    "noaa_land":      0.25,
-    "dclsat":         0.25,
-    "crutem5":        0.25,
+    "berkeley_earth": 0.20,
+    "noaa_land":      0.20,
+    "dclsat":         0.20,
+    "crutem5":        0.20,
     "glosatlat":      0.0,
+    "c_lsat":         0.20,
 }
 
 
@@ -285,14 +314,23 @@ def main() -> None:
     dcl = load_dclsat_ensemble()
     print(f"  shape: {dcl.shape}  finite years: {np.isfinite(dcl).all(axis=1).sum()}")
 
-    print("Building NOAA Land donor ensemble (200 members; DCLSAT donor rescaled to GloSAT σ)...")
-    # baseline DCLSAT first so the donor demeaning is sensible
+    # baseline DCLSAT first so the donor demeaning is sensible; also baseline
+    # CRUTEM/GloSAT so target_sigma_from_glosat sees them on the common axis.
     dcl_baselined_for_donor = rebaseline_to_1981_2010(dcl)
     cru_baselined_for_sigma = rebaseline_to_1981_2010(cru)
     glo_baselined_for_sigma = rebaseline_to_1981_2010(glo)
     tgt_sigma = target_sigma_from_glosat(glo_baselined_for_sigma, cru_baselined_for_sigma)
-    noaa = load_noaa_land(dcl_baselined_for_donor, tgt_sigma, RNG)
+
+    # Two donor-imputed LSAT leaves (NOAA Land and C-LSAT 2.1) draw from
+    # DISJOINT slices of DCLSAT's 200-member donor so they don't share per-
+    # member trajectory shape. NOAA gets members 1-100; C-LSAT gets 101-200.
+    print("Building NOAA Land donor ensemble (DCLSAT members 1-100, rescaled to GloSAT σ)...")
+    noaa = load_noaa_land(dcl_baselined_for_donor[:, :100], tgt_sigma, RNG)
     print(f"  shape: {noaa.shape}  finite years: {np.isfinite(noaa).all(axis=1).sum()}")
+
+    print("Building C-LSAT 2.1 donor ensemble (DCLSAT members 101-200, rescaled to GloSAT σ)...")
+    c_lsat = load_c_lsat(dcl_baselined_for_donor[:, 100:], tgt_sigma, RNG)
+    print(f"  shape: {c_lsat.shape}  finite years: {np.isfinite(c_lsat).all(axis=1).sum()}")
 
     print("Re-baselining all per-dataset ensembles to 1981-2010...")
     be_b = rebaseline_to_1981_2010(be)
@@ -300,6 +338,7 @@ def main() -> None:
     glo_b = rebaseline_to_1981_2010(glo)
     dcl_b = rebaseline_to_1981_2010(dcl)
     noaa_b = rebaseline_to_1981_2010(noaa)
+    c_lsat_b = rebaseline_to_1981_2010(c_lsat)
 
     leaves: dict[str, np.ndarray] = {
         "berkeley_earth": be_b,
@@ -307,6 +346,7 @@ def main() -> None:
         "glosatlat": glo_b,
         "dclsat": dcl_b,
         "noaa_land": noaa_b,
+        "c_lsat": c_lsat_b,
     }
 
     # Sanity print: ensemble-mean per dataset for the latest year

@@ -21,6 +21,7 @@ concerns *only* the LSAT side.
 | 3 | GloSATLAT v1.0.0.0 | No | best estimate + 2.5/97.5 CI (and decomposed σ components) | 1781-01 – 2021-12 | 1961-1990 | `Land Data/GloSATLAT/GloSATLAT-1-0-0-0_{summary,component}-series_global_monthly.nc` |
 | 4 | DCLSAT (DCENT v3.0 `lsat` field) | 200 members (gridded; we will reduce to global means) | ensemble of global means we compute ourselves | 1850-01 – 2025-12 | 1982-2014 | `Land Data/DCLSAT/DCENT_ensemble_mean_1850_2025.nc` (mean only currently; 200 members to be pulled) |
 | 5 | NOAA Land v6.1.0 | No | deterministic best estimate only — v6.1 aravg text file has variance columns set to `-999`; merged-product gridded NetCDF has no separate land uncertainty field | 1850-01 – 2026-04 | 1971-2000 (aravg text) / 1991-2020 (gridded) | `Land Data/NOAA Land/aravg.mon.land.90S.90N.v6.1.0.202604.asc` |
+| 6 | C-LSAT 2.1 (Sun Yat-sen University / CMA-homogenization lineage) | No | deterministic best estimate only | 1850-01 – 2025-12 | 1961-1990 | `Land Data/C-LSAT/China-LSAT2.1_tavg.nc` (raw) → `Land Data/C-LSAT/C-LSAT2.1_global_monthly.csv` (derived via `prepare_c_lsat_global_mean.py`) |
 
 ### Time-coverage note
 
@@ -154,94 +155,153 @@ independent DCLSAT product would show. We flag this in code and apply
 no correction in v1; a future sensitivity test could inflate the
 DCLSAT ensemble's anomalies by 1.15× to bracket the high end.
 
-### 2.5 NOAA Land — deterministic best estimate + DCLSAT-donor uncertainty
+### 2.5 NOAA Land — deterministic best estimate + DCLSAT-donor uncertainty (members 1–100)
 
 NOAA's v6.1 aravg text drops parametric uncertainty, and the gridded
 NetCDF has only the merged-product anomaly with no land-only
 uncertainty field. We therefore:
 - Use the aravg text `anomaly` column as the deterministic central estimate.
-- Add a donor uncertainty ensemble to it. The donor is **DCLSAT's
-  200-member ensemble** (Section 2.4), demeaned (so the donor's
-  ensemble-mean is removed at each time step), and rescaled to match a
-  target 1σ envelope informed by GloSATLAT's σ time series. Rationale:
-  NOAA Land uses GHCN-M v4 stations and pairwise homogenization (PHA),
-  which is far closer to DCLSAT's station base and method than to
-  CRUTEM5's reduced-space optimal-interpolation gridding. Using DCLSAT
-  as the donor preserves NOAA-family temporal structure of coverage
-  uncertainty (especially pre-1900) better than CRUTEM5 would.
+- Add a donor uncertainty ensemble to it. The donor is the **first 100
+  members of DCLSAT's 200-member ensemble** (Section 2.4), demeaned (so
+  the donor's ensemble-mean is removed at each time step), and rescaled
+  to match a target 1σ envelope informed by GloSATLAT's σ time series.
+  Rationale: NOAA Land uses GHCN-M v4 stations and pairwise
+  homogenization (PHA), which is far closer to DCLSAT's station base
+  and method than to CRUTEM5's reduced-space optimal-interpolation
+  gridding. Using DCLSAT as the donor preserves NOAA-family temporal
+  structure of coverage uncertainty (especially pre-1900) better than
+  CRUTEM5 would.
+- **Why members 1–100 and not all 200?** Two of the six LSAT leaves
+  (NOAA Land and C-LSAT 2.1, Section 2.6) are donor-imputed from
+  DCLSAT. To prevent the two leaves' per-member trajectories from
+  sharing identical DCLSAT-shape correlations, we partition the 200
+  DCLSAT members into disjoint halves — NOAA Land draws from members
+  1–100, C-LSAT 2.1 from 101–200. Per-member shape correlation between
+  the two donor-imputed leaves is zero by construction, while each
+  leaf's ensemble still represents the full DCLSAT-shape family at
+  half the member count.
 
-This is the most subjective imputation in the methodology. NOAA Land
-contributes **no independent uncertainty information** to the final
-ensemble — only its best-estimate trajectory adds signal. To reflect
-this we keep NOAA in the family tree but flag the imputation
-explicitly; a half-weight sensitivity test (NOAA at 0.125 instead of
-0.25) is left as future work.
+NOAA Land contributes **no independent uncertainty information** to
+the final ensemble — only its best-estimate trajectory adds signal.
+We keep NOAA in the family tree at full method-family weight (1/5);
+its donor-imputed uncertainty is flagged in the limitations section.
 
-## Step 3 — Re-baseline all five 200-member ensembles to 1981–2010
+### 2.6 C-LSAT 2.1 — deterministic best estimate + DCLSAT-donor uncertainty (members 101–200)
+
+C-LSAT 2.1 (Sun, Li, et al., Sun Yat-sen University; updates of the
+Xu et al. 2018 "C-LSAT" pipeline; hosted at `gwpu.net` and figshare
+[doi:10.6084/m9.figshare.28255394](https://doi.org/10.6084/m9.figshare.28255394))
+contributes a distinct method-family lineage to the LSAT side:
+station-level homogenization on a merged station network that
+substantially expands on GHCN-monthly's Asian and African coverage
+(~25,000 stations across the updated network including non-GHCN
+Chinese / Russian / Latin-American collections). The structural
+distinction from NOAA PHA is real: C-LSAT uses MASH-style penalized
+multiple-reference tests rather than NOAA's pairwise SNHT cascade,
+and the input network differs by ~20% pre-1950.
+
+**Pre-integration diagnostic.** Decadal r(C-LSAT, CRUTEM5) over
+1860–1900 is 0.31–0.86 (mean 0.72), comparable to the pairwise r
+between any two other LSAT products over the same era (range 0.63–0.76).
+C-LSAT's pre-1900 information is therefore *not* a duplicate of CRUTEM5,
+and the reviewer's "shared-input hollow-diversity" threshold (r > 0.95
+pre-1900) is comfortably avoided.
+
+**Construction (mirrors NOAA Land):**
+- Read the deterministic monthly anomaly from
+  `C-LSAT2.1_global_monthly.csv` (derived by
+  `prepare_c_lsat_global_mean.py` as the cos(lat)-weighted global
+  land-area mean of the 5°×5° gridded `tavg_anomaly` field; native
+  baseline 1961-1990 is removed during the 1981-2010 re-baselining of
+  Step 3).
+- Add the **DCLSAT members 101–200** donor ensemble (Section 2.5
+  rationale) rescaled to the same GloSATLAT-derived target σ envelope
+  used for NOAA Land.
+
+C-LSAT 2.1's contribution to the **1850–1900 reference period** shifts
+the ensemble-mean baseline by only +0.007 °C in practice (measured
+empirically by re-running the build with and without C-LSAT). The
+realised shift is well below the 0.05 °C concern threshold flagged
+at stats review.
+
+## Step 3 — Re-baseline all six per-dataset ensembles to 1981–2010
 
 For every member of every dataset:
 - subtract that member's own 1981–2010 mean.
 
-After this step all five ensembles share zero mean over 1981–2010 and
+After this step all six ensembles share zero mean over 1981–2010 and
 are directly comparable.
 
 ## Step 4 — Family tree weighting
 
-With only 5 LSAT products we use a shallow tree grouped by structural
-method. Equal probability is assigned at each split (subjective; see
-Thorne 2026 §3.2.5).
+We use a 5-method-family tree with equal P=1/5 at each top-level
+branch (Thorne 2026 §3.2.5 "equal-weight method families" principle).
+The five method families are:
 
-DCLSAT is placed in its **own fourth family** (the "dynamical-constraint
-family"). Although DCLSAT shares GHCN-M v4 stations with NOAA Land, its
-joint SST/LSAT energy-balance correction is methodologically orthogonal
-to any other product in this catalogue and is the dimension on which it
-is most structurally independent. Placing it inside the CRU lineage
-(as an earlier draft did) misrepresented its methodology; placing it
-alongside NOAA in a PHA family would under-acknowledge its uniqueness.
+- **HOMOGENIZATION / SCALPEL** — Berkeley Earth's iterative scalpel
+  homogenization.
+- **PAIRWISE PHA** — NOAA Land's pairwise SNHT cascade on GHCN-M v4.
+- **CRU-LINEAGE** — CRUTEM5 + GloSATLAT (reduced-space optimal
+  interpolation; common bias-correction lineage). Split internally
+  to two leaves at P=1/10 each.
+- **DYNAMICAL-CONSTRAINT** — DCLSAT (DCENT v3.0 land field; joint
+  SST/LSAT energy-balance correction).
+- **CMA-HOMOGENIZATION** — C-LSAT 2.1 (Sun et al., MASH-style penalised
+  multiple-reference homogenization on a merged station network that
+  includes a distinct ~20% pre-1950 non-GHCN input).
 
 ```
 LSAT root (P=1)
-├── HOMOGENIZATION / SCALPEL family    (P=1/4)
-│   └── Berkeley Earth                              (P=1/4)
-├── PAIRWISE PHA family                 (P=1/4)
-│   └── NOAA Land                                   (P=1/4)
-├── CRU-LINEAGE family                  (P=1/4)
-│   ├── CRUTEM5                                     (P=1/8)
-│   └── GloSATLAT                                   (P=1/8)
-└── DYNAMICAL-CONSTRAINT family         (P=1/4)
-    └── DCLSAT                                      (P=1/4)
+├── HOMOGENIZATION / SCALPEL family    (P=1/5)
+│   └── Berkeley Earth                              (P=1/5)
+├── PAIRWISE PHA family                 (P=1/5)
+│   └── NOAA Land                                   (P=1/5)
+├── CRU-LINEAGE family                  (P=1/5)
+│   ├── CRUTEM5                                     (P=1/10)
+│   └── GloSATLAT                                   (P=1/10)
+├── DYNAMICAL-CONSTRAINT family         (P=1/5)
+│   └── DCLSAT                                      (P=1/5)
+└── CMA-HOMOGENIZATION family           (P=1/5)
+    └── C-LSAT 2.1                                  (P=1/5)
 ```
 
 Resulting leaf probabilities (sum to 1):
-- Berkeley Earth: **0.250**
-- NOAA Land: **0.250**
-- DCLSAT: **0.250**
-- CRUTEM5: **0.125**
-- GloSATLAT: **0.125**
+- Berkeley Earth: **0.20**
+- NOAA Land: **0.20**
+- DCLSAT: **0.20**
+- C-LSAT 2.1: **0.20**
+- CRUTEM5: **0.10**
+- GloSATLAT: **0.10**
 
 **Time-varying weights for 2022–2025:** GloSATLAT does not cover 2022
-onward, so for those years we redistribute its 0.125 probability mass
+onward, so for those years we redistribute its 0.10 probability mass
 to CRUTEM5 (the only other leaf in the CRU-lineage family) — i.e.
-CRUTEM5 becomes 0.250 for years 2022–2025 and GloSATLAT 0.0. All other
+CRUTEM5 becomes 0.20 for years 2022–2025 and GloSATLAT 0.0. All other
 weights unchanged. This preserves the family-level weights (CRU
-lineage remains P=0.25 throughout).
+lineage remains P=0.20 throughout).
 
-**Planned sensitivity tests (out of scope for v1):**
-- Collapse HOMOG and PHA into a single "single-product" super-family
-  (P=1/3 for {BE, NOAA} jointly, P=1/3 for CRU-lineage, P=1/3 for
-  DCLSAT). This down-weights BE and NOAA's single-leaf privilege.
-- Place DCLSAT in PHA-family with NOAA (DCLSAT gets P=1/6, NOAA P=1/6).
-- Half-weight NOAA Land (0.125 instead of 0.250) to reflect its
-  imputed-uncertainty status.
+**Planned sensitivity tests (out of scope for v2):**
+- Collapse PAIRWISE-PHA and CMA-HOMOGENIZATION into a single
+  "station-network homogenization" super-family (joint P=1/4, NOAA &
+  C-LSAT each P=1/8). The reviewer's most important recommended test —
+  surfaces whether the C-LSAT 1/5 weight is buying genuine structural
+  diversity or partially duplicating the NOAA PHA family.
+- Half-weight the two donor-imputed leaves (NOAA Land and C-LSAT 2.1
+  each at 0.10 instead of 0.20) to reflect their no-independent-σ
+  status; redistribute the freed weight equally to the other three
+  families.
+- Place DCLSAT in PHA-family with NOAA (a strict reading of
+  station-base overlap).
 - Run with a 1995/96 splice to quantify the spread inflation we forgo
-  by not splicing (Step 5 retains the unspliced version as default).
+  by not splicing.
 
 ## Step 5 — Generate 10,000-member ensemble
 
 For each of 10,000 draws:
 1. Pick a leaf dataset using year-dependent weights from Step 4.
-2. From that leaf's (200-member, already-rebaselined) ensemble, sample
-   one member uniformly at random.
+2. From that leaf's already-rebaselined ensemble (Berkeley Earth 10,
+   CRUTEM5 / GloSATLAT / DCLSAT 200 each, NOAA Land 100, C-LSAT 2.1
+   100), sample one member uniformly at random.
 3. Take that member's full 1850–2025 annual time series.
 4. Record it as one ensemble member.
 
@@ -270,11 +330,15 @@ of his own approach in his Supplement §3).
 3. **DCLSAT marginal-LSAT spread is conditioned on SST/LSAT joint
    consistency** and is plausibly ~10–30% narrower than a standalone
    DCLSAT product's uncertainty would be.
-4. **NOAA Land contributes no independent uncertainty.** Its donor
-   ensemble (rescaled DCLSAT) is fully imputed. We keep its
-   best-estimate signal in the family tree at P=0.25; this means a
-   quarter of the final ensemble has imputed-DCLSAT-shape uncertainty
-   wrapped around NOAA's mean.
+4. **Two of six leaves contribute no independent uncertainty.** NOAA
+   Land and C-LSAT 2.1 are donor-imputed from DCLSAT (members 1–100 and
+   101–200 respectively, so the two leaves do not share per-member
+   shape correlations). We keep their best-estimate signals at full
+   1/5 family weight; this means ~40% of the final ensemble has
+   imputed-DCLSAT-shape uncertainty wrapped around two different best
+   estimates. Combined with DCLSAT's own 1/5 leaf, ~60% of the LSAT
+   ensemble's uncertainty traces in some form back to DCLSAT — flagged
+   here and addressed in the planned half-weight sensitivity test.
 5. **Effective N in the tail is far below 10,000.** With Berkeley
    Earth's 10 native trajectories sitting under P=0.25 of the tree,
    the effective independent draws in the tail (1850–1900) is
