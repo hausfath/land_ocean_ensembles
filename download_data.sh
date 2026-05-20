@@ -46,15 +46,21 @@ curl_get \
     "https://dap.ceda.ac.uk/badc/deposited2025/GloSAT/GloSATLAT-1-0-0-0/diagnostics/component-series/GloSATLAT-1-0-0-0_component-series_global_monthly.nc" \
     "Land Data/GloSATLAT/GloSATLAT-1-0-0-0_component-series_global_monthly.nc"
 
-echo "[4/5] DCLSAT — ensemble mean and climatology (members pulled by pull_dcent_lsat_members.py)"
-curl_get \
-    "https://dataverse.harvard.edu/api/access/datafile/13636717" \
-    "Land Data/DCLSAT/DCENT_ensemble_mean_1850_2025.nc"
-curl_get \
-    "https://dataverse.harvard.edu/api/access/datafile/10393657" \
-    "Land Data/DCLSAT/DCENT_monthly_climatology_1982_2014.nc"
+echo "[4/6] DCENT-I — diagnostics + members (pulled iteratively by pull_dcent_i_members.py)"
+# DCENT-I v1.1.0.0 (Chan et al. 2026, GDJ; doi:10.7910/DVN/ROG38Q,
+# dataset version 2.0 published 2026-03-30 with end-of-2025 extension) is the
+# spatially complete kriging-infilled extension of DCENT. The pull script
+# downloads each of the 200 member NetCDFs in sequence (~22 MB each, ~4.3 GB
+# total), extracts both LSAT and SST global means via static land-fraction
+# decomposition (see methodologies §2.4 land / §2.2 ocean), and deletes the
+# raw NetCDF before pulling the next. Peak transient disk: ~22 MB.
+# The diagnostics.nc file is downloaded once for the land/sea weight field.
+echo "  (DCENT-I members + diagnostics pulled iteratively by pull_dcent_i_members.py)"
+echo "  v3 archive of the old DCENT v3.0 derived outputs lives under"
+echo "  Land Data/DCLSAT/v3_archive/ and Ocean Data/DCENT SST/v3_archive/"
 
 echo "[5/6] NOAA Land v6.1.0 — aravg monthly + annual, land 90S-90N"
+echo "  (NOAA Land aravg is used as the central; uncertainty is donor-imputed from DCENT-I LSAT)"
 curl_get \
     "https://www.ncei.noaa.gov/data/noaa-global-surface-temperature/v6.1/access/timeseries/aravg.mon.land.90S.90N.v6.1.0.202604.asc" \
     "Land Data/NOAA Land/aravg.mon.land.90S.90N.v6.1.0.202604.asc"
@@ -111,15 +117,13 @@ curl_get \
     "https://downloads.psl.noaa.gov/Datasets/COBE2/sst.mon.ltm.1991-2020.nc" \
     "Ocean Data/COBE-SST2/sst.mon.ltm.1991-2020.nc"
 
-echo "[4/4] DCENT SST — ensemble mean (members pulled by pull_dcent_sst_members.py)"
-curl_get \
-    "https://dataverse.harvard.edu/api/access/datafile/13636717" \
-    "Ocean Data/DCENT SST/DCENT_ensemble_mean_1850_2025.nc"
+echo "[4/4] DCENT-I SST — same iterative pull as land (pull_dcent_i_members.py covers both)"
+echo "  DCENT-I derives both LSAT and SST from the same member files via"
+echo "  land-fraction / sea-fraction decomposition. See [4/6] in the LAND section."
 
 echo
 echo "Done. Next step:"
-echo "  python3 pull_dcent_lsat_members.py    # ~5 GB transient, deleted after extraction"
-echo "  python3 pull_dcent_sst_members.py     # ~5 GB transient, deleted after extraction"
+echo "  python3 pull_dcent_i_members.py       # ~22 MB transient peak, ~13 min — produces LSAT + SST CSVs"
 echo "  python3 pull_ersstv6_members.py       # ~135 MB transient, deleted after extraction, ~2.7 hr"
 echo "  python3 prepare_hadsst_global_ensemble.py"
 echo "  python3 prepare_cobe_global_mean.py"

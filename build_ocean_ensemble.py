@@ -15,7 +15,8 @@ Inputs (in `Ocean Data/`):
     ERSSTv6/aravg.mon.ocean.90S.90N.v6.1.0.202604.asc       (best-estimate central; used as
                                                               the post-native-end anchor)
     COBE-SST2/COBE-SST2_global_monthly.csv                  (deterministic, derived)
-    DCENT SST/DCENT_SST_monthly_ensemble.csv                (200 native members)
+    DCENT SST/DCENT_I_SST_monthly_ensemble.csv              (200 native members,
+                                                              DCENT-I sea-fraction-weighted SST)
 
 Outputs (in this folder):
     ocean_ensemble.csv                  176 × 10,001
@@ -123,7 +124,13 @@ def load_hadsst4_ensemble() -> np.ndarray:
 
 
 def load_dcent_sst_ensemble() -> np.ndarray:
-    path = DATA / "DCENT SST" / "DCENT_SST_monthly_ensemble.csv"
+    """Returns (N_YEARS, 200) annual ensemble. Native baseline 1982-2014.
+    Backed by DCENT-I v1.1.0.0 (Chan et al. 2026, GDJ) — the spatially
+    complete kriging-infilled extension of DCENT. Each member's native
+    `sst` field has been area-weighted to a global mean by
+    `pull_dcent_i_members.py` (see methodology §2.2 + sea-ice note in Step 1).
+    """
+    path = DATA / "DCENT SST" / "DCENT_I_SST_monthly_ensemble.csv"
     df = pd.read_csv(path)
     mem_cols = [c for c in df.columns if c.startswith("m") and c != "month"]
     assert len(mem_cols) == 200, f"expected 200 DCENT SST members, got {len(mem_cols)}"

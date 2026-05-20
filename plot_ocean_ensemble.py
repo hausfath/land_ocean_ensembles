@@ -27,7 +27,7 @@ def main() -> None:
         "hadsst4":   "HadSST 4.2.0.0",
         "ersstv6":   "ERSSTv6",
         "cobe_sst2": "COBE-SST2",
-        "dcent_sst": "DCENT SST (v3.0)",
+        "dcent_sst": "DCENT-I SST (v1.1.0.0)",
     }
     for name, color in colors.items():
         ax.plot(perds["year"], perds[f"{name}_mean"], color=color, lw=0.9, alpha=0.85, label=labels[name])

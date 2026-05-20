@@ -70,25 +70,28 @@ use a `cos(lat)` weighting over `isfinite` cells (plus an explicit
 | **HadSST 4.2.0.0** | NaN over ice (in-situ only — no obs there) | **ice cells excluded** from global mean |
 | **ERSSTv6** | `-999.9` undef sentinel over fully-ice cells; EOF reconstruction extends into partial-ice cells | **fully-ice excluded; partial-ice included as reconstructed SST** |
 | **COBE-SST 2** | Fills with **−1.8 °C** (freezing point of seawater) wherever ice is present (verified empirically: 53 Arctic cells exactly at −1.8 °C in Jan 2024) | **ice cells INCLUDED, with the −1.8 °C placeholder** |
-| **DCENT SST** | NaN over land/ice (DCENT reconstructs only over open-water cells per its documentation) | **ice cells excluded** |
+| **DCENT-I SST** | Full-globe kriging infill; sea-ice cells filled with 2-m air-temperature anomalies blended in (DCENT-I infilling design) | **ice cells INCLUDED via weight=0 → contribute their blended air-temp value to the sea-fraction-weighted SST mean** |
 
-This creates two systematic asymmetries that are not nuisance — they
-are part of the structural diversity our family tree is meant to
-represent — but worth surfacing:
+The post-v2 configuration (HadSST4 + ERSSTv6 exclude, COBE-SST 2 +
+DCENT-I include) gives 2-of-4 symmetry on this axis — improved over
+the v1 configuration (1-of-4 include). This creates two systematic
+asymmetries that are not nuisance — they are part of the structural
+diversity our family tree is meant to represent — but worth surfacing:
 
-1. **Different denominators.** COBE's global-ocean denominator is
-   approximately constant in time (it includes ice area at −1.8 °C);
-   the other three products' denominators *grow* as polar ice retreats
+1. **Different denominators.** COBE's and DCENT-I's global-ocean
+   denominators are constant in time (they include ice area at
+   −1.8 °C placeholder for COBE, blended air-temp for DCENT-I); the
+   other two products' denominators *grow* as polar ice retreats
    (previously-NaN cells become observable open ocean). As Arctic ice
-   has receded since ~1980, the modern-era global means of HadSST4 /
-   ERSSTv6 / DCENT pick up newly-emerged cold-water cells that COBE
-   was already counting at −1.8 °C — exerting a small modern-era
-   cooling bias on those three relative to COBE.
+   has receded since ~1980, the modern-era global means of HadSST4 and
+   ERSSTv6 pick up newly-emerged cold-water cells that COBE/DCENT-I
+   were already counting at their respective placeholders — exerting
+   a small modern-era cooling bias on those two relative to COBE/DCENT-I.
 2. **Edge-of-ice-retreat sign reversal.** Cells transitioning from
-   ice-covered to ice-free move from {−1.8 °C placeholder | NaN} to
-   their actual seasonal-mean SST. For COBE the transition appears as
-   a real anomaly relative to the −1.8 °C placeholder; for the other
-   three the transition appears as a new cell entering the denominator.
+   ice-covered to ice-free move from {placeholder | NaN} to their
+   actual seasonal-mean SST. For COBE/DCENT-I the transition appears
+   as a real anomaly relative to the placeholder; for HadSST4/ERSSTv6
+   the transition appears as a new cell entering the denominator.
    These produce different signals at the same geographic location.
 
 **Magnitude:** in practice this contributes ~0.01–0.05 °C of
@@ -144,31 +147,67 @@ published annual total σ to within a few percent (the only
 approximations are the ρ=0.3 AR(1) choice and the perfect-time-
 correlation assumption for `correlated` and `coverage`).
 
-### 2.2 DCENT SST — pull 200 native DCENT members, compute SST global means
+### 2.2 DCENT SST — pull 200 native DCENT-I members, extract SST global means
 
-The DCENT v3.0 Harvard Dataverse release exposes 200 gridded NetCDFs
-(~25 MB each, ~5 GB total) with separate `sst`, `lsat`, and
-`temperature` fields. We download all 200, compute the
-area-weighted (cos(lat)) global mean of the `sst` field per member per
-month, store the resulting 200 × n_months matrix as
-`DCENT_SST_monthly_ensemble.csv`, and delete the raw NetCDFs (the
-fileId-per-member manifest in `dcent_member_fileids.json` makes the
-pull reproducible).
+We use **DCENT-I v1.1.0.0** (Chan et al. 2026, Geoscience Data Journal;
+doi:10.7910/DVN/ROG38Q, dataset version updated 2026-03-30 through end
+of 2025) — the spatially complete kriging-infilled extension of DCENT.
+The original unfilled DCENT v3.0 derived data are archived under
+`Ocean Data/DCENT SST/v3_archive/` for reproducibility and reversion.
 
-`sst` is defined only on ocean grid cells (NaN over land). The global
-mean is Σ(cos(lat) · sst) / Σ(cos(lat) · mask), so it is an
-ocean-area-weighted mean restricted to ocean cells.
+The DCENT-I v1.1.0.0 Harvard Dataverse release exposes 200 gridded
+NetCDFs (~42 MB each, ~8.4 GB total). Each member NetCDF contains
+**three separate fields** — `sst` (sea_surface_temperature_anomaly),
+`lsat` (land near-surface air temperature anomaly), and `ts` (merged
+Surface Temperature Anomaly) — on a 5°×5° monthly grid from 1850-01
+through 2025-12.
 
-**Caveat (NOT a mirror of land):** each DCENT member's SST field is
-*paired* with a specific LSAT field under DCENT's dynamical-consistency
-constraint, so the SST and LSAT marginals are not independent samples
-of standalone-product uncertainty. **However**, SST is the larger
+We download each member NetCDF, compute the area-weighted (cos lat)
+global mean of the `sst` field directly (skipping NaN cells), then
+delete the raw NetCDF. The same script writes the parallel LSAT CSV
+from each member's `lsat` field (land methodology §2.4). Peak
+transient disk: ~42 MB.
+
+**Sea-ice cells in DCENT-I's `sst` field.** DCENT-I's `sst` is finite
+over both open ocean AND sea-ice cells; the value at an ice cell is
+the kriged surface temperature including air-temperature blending.
+This is methodologically the same compromise COBE-SST 2 makes via its
+−1.8 °C freezing-point placeholder, just smarter — and it improves
+the sea-ice asymmetry across SST products (see Step 1 sea-ice note:
+DCENT-I now joins COBE-SST 2 as a product that includes ice cells in
+the SST mean, while HadSST4 and ERSSTv6 remain ice-excluding).
+
+**Why we switched from DCENT v3.0 to DCENT-I:**
+- DCENT-I is the published, peer-reviewed infilled version.
+- Resolves the "no extrapolation beyond observations" coverage gap
+  in DCENT v3.0 — modern-era polar regions are now spatially complete.
+- 200-member ensemble explicitly samples kriging uncertainty alongside
+  the bias-adjustment uncertainty.
+- Empirical impact on the headline: 2024 SST median shifts by
+  +0.02 °C (modest modern-era polar warming uplift; matches paper's
+  qualitative claim of polar-region warming attribution).
+
+**Caveat #1 (carried over from DCENT v3.0):** each DCENT-I member's
+SST-over-ocean field is paired with a specific LSAT field under the
+underlying DCENT dynamical-consistency constraint. SST is the larger
 reservoir and the larger uncertainty source in DCENT — its joint
-constraint mainly prunes SST extremes that are inconsistent with the
-smaller LSAT degrees of freedom, not the other way around. The
-SST-marginal spread is therefore plausibly only ~5–15% narrower than
-a standalone SST product would show (vs. the ~10–30% narrowing we
-flag for DCLSAT). We apply no correction in v1.
+constraint mainly prunes SST extremes inconsistent with the smaller
+LSAT degrees of freedom, so the SST-marginal spread is plausibly
+~5–15% narrower than a standalone SST product would show.
+
+**Caveat #2 (new for DCENT-I):** the kriging-infilled modern-era
+σ across 200 members is ~40% tighter than DCENT v3.0's was in
+the same era (2024 σ: 0.0145 → 0.0088 °C); pre-1900 σ is comparable
+(0.20 vs 0.19). This is a deliberate consequence of the infilling
+model — kriging is a smooth low-variance estimator where data are
+dense. The leaf still carries appropriate sparse-era uncertainty.
+
+(The DCENT-I v1.0.0.0 release we initially planned to use covered
+only 1850–2024 and required weight-based decomposition of a single
+merged `ts` field via a static land/sea-fraction diagnostic. The
+v1.1.0.0 release published 2026-03-30 exposes `sst`, `lsat`, and `ts`
+as separate variables per member and extends the time axis through
+2025-12, eliminating both prior complications.)
 
 ### 2.3 ERSSTv6 — pull 1000 native NCEI members, compute global means; frozen-offset fallback past native end
 
@@ -425,10 +464,14 @@ leaves cover the full record.
    fails if the gap to `END_YEAR` reaches 2 years.
 8. **Sea-ice region handling is not harmonised across products**
    (see Step 1 "Note on sea-ice region handling" for the per-product
-   convention table). COBE-SST 2 includes ice cells at a −1.8 °C
-   placeholder; the other three exclude them. This contributes
-   ~0.01–0.05 °C of modern-era cross-product disagreement that the
-   family tree absorbs as structural diversity rather than reconciling.
+   convention table). After the v2 switch to DCENT-I, two products
+   include ice cells (COBE-SST 2 at −1.8 °C; DCENT-I via blended
+   2-m air-temp through its weight-based decomposition) and two
+   exclude them (HadSST4, ERSSTv6). This 2-of-4 symmetry is an
+   improvement over v1's 1-of-4 configuration. Cross-product
+   disagreement from sea-ice convention contributes ~0.01–0.05 °C
+   to modern-era spread, absorbed by the family tree as structural
+   diversity rather than reconciled.
 
 ## Safe vs unsafe downstream uses
 

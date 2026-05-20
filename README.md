@@ -19,12 +19,12 @@ component.
 
 | Year | LSAT median | LSAT 5–95% | SST median | SST 5–95% |
 |------|------------:|----------:|----------:|---------:|
-| 1850 | −0.17 °C    | −0.68 to +0.45 | −0.01 °C | −0.50 to +0.24 |
-| 1900 | +0.34 °C    | +0.08 to +0.58 | +0.09 °C | −0.10 to +0.21 |
-| 1950 | +0.22 °C    | +0.13 to +0.29 | +0.05 °C | −0.05 to +0.26 |
-| 2000 | +1.05 °C    | +1.01 to +1.08 | +0.47 °C | +0.46 to +0.48 |
-| 2024 | +2.29 °C    | +2.18 to +2.41 | +1.08 °C | +1.04 to +1.14 |
-| 2025 | +2.11 °C    | +1.98 to +2.25 | — | — |
+| 1850 | −0.18 °C    | −0.69 to +0.42 | −0.02 °C | −0.52 to +0.23 |
+| 1900 | +0.32 °C    | +0.07 to +0.56 | +0.09 °C | −0.10 to +0.22 |
+| 1950 | +0.20 °C    | +0.11 to +0.27 | +0.04 °C | −0.08 to +0.26 |
+| 2000 | +1.02 °C    | +0.99 to +1.06 | +0.46 °C | +0.45 to +0.47 |
+| 2024 | +2.26 °C    | +2.15 to +2.39 | +1.10 °C | +1.04 to +1.14 |
+| 2025 | +2.09 °C    | +1.95 to +2.23 | +0.99 °C | +0.93 to +1.02 |
 
 *Anomalies relative to the 1850–1900 average. Percentiles are computed
 on the 1981–2010 modern baseline (where the ensembles have minimum
@@ -32,7 +32,7 @@ spread by construction) and then shifted by a constant offset so the
 median has zero mean over 1850–1900 — the "modern baseline plus
 offset" approach. This preserves the modern-era uncertainty
 representation while reporting against preindustrial. Offsets:
-land +1.04 °C, ocean +0.48 °C.*
+land +1.02 °C, ocean +0.47 °C.*
 
 ## Datasets
 
@@ -43,7 +43,7 @@ land +1.04 °C, ocean +0.48 °C.*
 | Berkeley Earth High-Res Land | 10 native members | 1750–2026 | `berkeleyearth.org` |
 | CRUTEM 5.1.0.0 | No (200 synth from σ) | 1850–2026 | `metoffice.gov.uk/hadobs/crutem5` |
 | GloSATLAT 1.0.0.0 | No (200 synth from σ) | 1781–2021 | CEDA (`catalogue.ceda.ac.uk`) |
-| DCLSAT (DCENT v3.0 land field) | 200 native members | 1850–2025 | Harvard Dataverse `doi:10.7910/DVN/NU4UGW` |
+| DCLSAT-I (DCENT-I v1.1.0.0, native `lsat` field) | 200 native members (infilled) | 1850–2025 | Harvard Dataverse `doi:10.7910/DVN/ROG38Q` |
 | NOAA Land v6.1.0 | No (DCLSAT donor, m 1–100) | 1850–2026 | `ncei.noaa.gov/.../noaa-global-surface-temperature/v6.1` |
 | C-LSAT 2.1 (CMA homogenization) | No (DCLSAT donor, m 101–200) | 1850–2025 | `gwpu.net` / [figshare:28255394](https://doi.org/10.6084/m9.figshare.28255394) |
 
@@ -54,7 +54,7 @@ land +1.04 °C, ocean +0.48 °C.*
 | HadSST 4.2.0.0 | 200 native bias members + σ noise | 1850–2026 | `metoffice.gov.uk/hadobs/hadsst4` |
 | ERSSTv6 (NOAA pre-release ensemble) | 1000 native members (1850–2024) + frozen-offset fallback for 2025 | 1850–2025 | `ncei.noaa.gov/pub/data/cmb/ersst/v5/tmp/ersstv6.ensemble/` (contact `boyin.huang@noaa.gov`) |
 | COBE-SST 2 | No (HadSST4 donor) | 1850–2026 | NOAA PSL mirror of JMA |
-| DCENT SST (v3.0) | 200 native members | 1850–2025 | Harvard Dataverse `doi:10.7910/DVN/NU4UGW` |
+| DCENT-I SST (v1.1.0.0, native `sst` field) | 200 native members (infilled) | 1850–2025 | Harvard Dataverse `doi:10.7910/DVN/ROG38Q` |
 
 ## Methodology
 
@@ -81,13 +81,12 @@ land_ocean_temps/
 ├── ocean_ensemble_methodology.md
 │
 ├── download_data.sh                  # fetch raw datasets into Land Data/ + Ocean Data/
-├── pull_dcent_lsat_members.py        # data prep: DCENT 200 LSAT members
-├── pull_dcent_sst_members.py         # data prep: DCENT 200 SST members
+├── pull_dcent_i_members.py           # data prep: DCENT-I 200 members → LSAT + SST CSVs
 ├── pull_ersstv6_members.py           # data prep: ERSSTv6 1000 native members
 ├── prepare_hadsst_global_ensemble.py # data prep: HadSST4 gridded → 200 globals
 ├── prepare_cobe_global_mean.py       # data prep: COBE-SST2 NetCDF → anomaly CSV
 ├── prepare_c_lsat_global_mean.py     # data prep: C-LSAT 2.1 NetCDF → anomaly CSV
-├── dcent_member_fileids.json         # Harvard Dataverse manifest for DCENT v3.0
+├── dcent_i_member_fileids.json       # Harvard Dataverse manifest for DCENT-I v1.1.0.0
 │
 ├── build_land_ensemble.py            # core: 10,000-member LSAT builder
 ├── build_ocean_ensemble.py           # core: 10,000-member SST builder
@@ -133,8 +132,7 @@ will lose the native bias-dimension covariance.
 ### 3. Prepare derived global means (one-time)
 
 ```bash
-python3 pull_dcent_lsat_members.py            # ~15 min, ~5 GB transient
-python3 pull_dcent_sst_members.py             # ~15 min, ~5 GB transient
+python3 pull_dcent_i_members.py               # ~17 min, ~42 MB peak transient (LSAT + SST in one pass)
 python3 pull_ersstv6_members.py               # ~2.7 hr, ~135 MB transient (iterative)
 python3 prepare_hadsst_global_ensemble.py     # ~30 s
 python3 prepare_cobe_global_mean.py           # ~5 s

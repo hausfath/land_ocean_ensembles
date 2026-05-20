@@ -40,7 +40,7 @@ LAND_LEAVES = {
     "noaa_land":      ("NOAAGlobalTemp Land v6.1","1850–2026", "+ DCLSAT (m 1-100) pseudo-ensemble"),
     "crutem5":        ("CRUTEM 5.1.0.0",          "1850–2026", "+ synth 200 from σ components"),
     "glosatlat":      ("GloSATLAT 1.0.0.0",       "1781–2021", "+ synth 200 from σ components"),
-    "dclsat":         ("DCLSAT (DCENT v3.0 land)","1850–2025", "200 native members"),
+    "dclsat":         ("DCLSAT-I (DCENT-I v1.1.0.0)","1850–2025","200 native members (infilled)"),
     "c_lsat":         ("C-LSAT 2.1 (CMA)",        "1850–2025", "+ DCLSAT (m 101-200) pseudo-ensemble"),
 }
 
@@ -48,7 +48,7 @@ OCEAN_LEAVES = {
     "hadsst4":   ("HadSST 4.2.0.0",            "1850–2026", "200 native bias members + σ noise"),
     "ersstv6":   ("ERSSTv6",                   "1850–2024", "1000 native members + 2025 frozen-offset"),
     "cobe_sst2": ("COBE-SST 2",                "1850–2026", "+ HadSST4 pseudo-ensemble"),
-    "dcent_sst": ("DCENT SST (v3.0)",          "1850–2025", "200 native members"),
+    "dcent_sst": ("DCENT-I SST (v1.1.0.0)",    "1850–2025", "200 native members (infilled)"),
 }
 
 

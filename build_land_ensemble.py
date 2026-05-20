@@ -10,7 +10,7 @@ Inputs (in `Land Data/`):
     Berkeley Earth Highres/Land_TAVG_ensemble.txt          (10-member monthly)
     CRUTEM5/CRUTEM.5.1.0.0.component_series.global.monthly.csv
     GloSATLAT/GloSATLAT-1-0-0-0_component-series_global_monthly.nc
-    DCLSAT/DCLSAT_monthly_ensemble.csv                     (200-member monthly,
+    DCLSAT/DCLSAT_I_monthly_ensemble.csv                   (200-member monthly,
                                                             from pull_dcent_lsat_members.py)
     NOAA Land/aravg.mon.land.90S.90N.v6.1.0.202604.asc
 
@@ -188,8 +188,13 @@ def synthesize_component_ensemble(
 
 
 def load_dclsat_ensemble() -> np.ndarray:
-    """Returns (N_YEARS, 200) annual ensemble. Native baseline 1982-2014."""
-    path = DATA / "DCLSAT" / "DCLSAT_monthly_ensemble.csv"
+    """Returns (N_YEARS, 200) annual ensemble. Native baseline 1982-2014.
+    Backed by DCENT-I v1.1.0.0 (Chan et al. 2026, GDJ) — the spatially
+    complete kriging-infilled extension of DCENT. Each member's native
+    `lsat` field has been area-weighted to a global mean by
+    `pull_dcent_i_members.py` (see methodology §2.4).
+    """
+    path = DATA / "DCLSAT" / "DCLSAT_I_monthly_ensemble.csv"
     df = pd.read_csv(path)
     member_cols = [c for c in df.columns if c.startswith("m") and c != "month"]
     assert len(member_cols) == 200, f"expected 200 DCLSAT members, got {len(member_cols)}"

@@ -130,30 +130,69 @@ recover GloSATLAT's published 95% CI.
 GloSATLAT ends in 2021. We do **not** extend it; instead, the family
 tree assigns zero weight to GloSATLAT for 2022–present (see Step 4).
 
-### 2.4 DCLSAT — pull 200 native DCENT members, compute LSAT global means
+### 2.4 DCLSAT — pull 200 native DCENT-I members, extract LSAT global means
 
-The DCENT v3.0 Harvard Dataverse release exposes 200 gridded NetCDFs
-(~25 MB each, ~5 GB total) with separate `sst`, `lsat`, and `temperature`
-fields. We download all 200, compute the area-weighted (cos(lat))
-global mean of the `lsat` field per member per month, store the
-resulting 200×(monthly-times) matrix as `DCLSAT_global_mean_ensemble.csv`,
-and *then delete the raw NetCDFs* (manifest of fileIds preserved in the
-methodology so the pull is reproducible).
+We use **DCENT-I v1.1.0.0** (Chan et al. 2026, Geoscience Data
+Journal; doi:10.7910/DVN/ROG38Q, dataset version updated 2026-03-30
+through end of 2025), the spatially complete kriging-infilled
+extension of DCENT. The original unfilled DCENT v3.0 derived data
+are archived under `Land Data/DCLSAT/v3_archive/` for reproducibility.
 
-Note: `lsat` is defined only on land grid cells (NaN over ocean). The
-global mean is computed as Σ(cos(lat) · lsat) / Σ(cos(lat) · mask), so
-it is a land-area-weighted mean restricted to land cells — matching the
-quantity reported by Berkeley/CRU/NOAA.
+The DCENT-I v1.1.0.0 Harvard Dataverse release exposes 200 gridded
+NetCDFs (~42 MB each, ~8.4 GB total). Each member NetCDF contains
+**three separate fields** — `sst` (sea_surface_temperature_anomaly),
+`lsat` (land near-surface air temperature anomaly), and `ts` (merged
+Surface Temperature Anomaly) — on a 5°×5° monthly grid from 1850-01
+through 2025-12. The decomposition is performed by the DCENT-I authors
+themselves via their ordinary-kriging infill (with anisotropic
+heterogeneous kernels) and air-temperature blending over sea-ice cells.
 
-**Important caveat:** each DCENT member's LSAT field is *paired* with a
-specific SST field under DCENT's dynamical-consistency constraint. The
-200-member spread of LSAT marginals therefore *under-represents* the
-uncertainty that would obtain in a standalone-LSAT product, because
-joint consistency rules out some LSAT-only-extreme trajectories. The
-LSAT marginal spread is plausibly ~10–30% narrower than a fully
-independent DCLSAT product would show. We flag this in code and apply
-no correction in v1; a future sensitivity test could inflate the
-DCLSAT ensemble's anomalies by 1.15× to bracket the high end.
+We download each member NetCDF, compute the area-weighted (cos lat)
+global mean of the `lsat` field directly (skipping NaN cells), then
+delete the raw NetCDF. The same script writes the parallel SST CSV
+from each member's `sst` field (ocean methodology §2.2). Peak
+transient disk: ~42 MB.
+
+**Sea-ice cells in the DCENT-I decomposition.** Both `sst` and `lsat`
+are finite over sea-ice cells (overlap ~20% of the globe), reflecting
+DCENT-I's design choice to assign kriged values to BOTH fields at ice
+locations. The `sst` value at an ice cell is the kriged surface
+temperature including the air-temperature blending; the `lsat` value
+similarly reflects the kriged 2-m air temperature. We accept these
+as the published DCENT-I quantities rather than re-mask.
+
+**Why we switched from DCENT v3.0 to DCENT-I:**
+- DCENT-I is the published, peer-reviewed infilled version.
+- Resolves the "no extrapolation beyond observations" coverage gap
+  in DCENT v3.0 — modern-era polar regions are now spatially complete.
+- 200-member ensemble explicitly samples kriging uncertainty alongside
+  the bias-adjustment uncertainty already in DCENT.
+- Empirical impact on the headline: 2024 LSAT median shifts by
+  −0.03 °C (slight cooling — kriging dampens member-to-member spread
+  in well-observed cells), 2024 SST shifts by +0.02 °C (modest polar
+  warming uplift); both changes within Monte-Carlo uncertainty.
+
+**Important caveat #1 (carried over from DCENT v3.0):** each DCENT-I
+member's LSAT-over-land field is paired with a specific SST field
+under the underlying DCENT dynamical-consistency constraint. The
+200-member spread of LSAT marginals *under-represents* what a
+standalone-LSAT product would show by ~10–30%.
+
+**Important caveat #2 (new for DCENT-I):** the kriging-infilled
+modern-era spread is ~40% tighter than DCENT v3.0's was in the same
+era (e.g., 2024 SST σ across 200 members: 0.0145 → 0.0088 °C). The
+pre-1900 spread is *wider* (1850 LSAT σ: 0.065 → 0.11 °C) because
+kriging correctly carries large uncertainty into sparse-data
+extrapolation. Net: DCENT-I correctly redistributes σ contribution
+across the record — less spread where data is dense, more where it's
+sparse. The leaf still carries appropriate sparse-era uncertainty.
+
+(Previous v1.0.0.0 of DCENT-I covered only 1850–2024 and required
+weight-based decomposition of a single merged `ts` field via a static
+land/sea-fraction diagnostic. The v1.1.0.0 release published 2026-03-30
+exposes `sst`, `lsat`, and `ts` as separate variables per member and
+extends the time axis through 2025-12, eliminating both prior
+complications. The build now uses v1.1.0.0 directly.)
 
 ### 2.5 NOAA Land — deterministic best estimate + DCLSAT-donor uncertainty (members 1–100)
 

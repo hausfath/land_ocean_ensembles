@@ -43,7 +43,7 @@ def main() -> None:
         "berkeley_earth": "Berkeley Earth Highres",
         "crutem5":        "CRUTEM5",
         "glosatlat":      "GloSATLAT (1850-2021)",
-        "dclsat":         "DCLSAT (DCENT v3.0 land)",
+        "dclsat":         "DCLSAT-I (DCENT-I v1.1.0.0)",
         "noaa_land":      "NOAA Land v6.1",
         "c_lsat":         "C-LSAT 2.1 (CMA)",
     }
