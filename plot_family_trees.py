@@ -30,7 +30,7 @@ LAND_TREE = [
 OCEAN_TREE = [
     "hadsst4",
     "ersstv6",
-    "cobe_sst2",
+    ["cobe_sst3", "cobe_sst3_donor"],  # COBE family: two SST3 siblings (native + HadSST4-donor)
     "dcent_sst",
 ]
 
@@ -45,10 +45,11 @@ LAND_LEAVES = {
 }
 
 OCEAN_LEAVES = {
-    "hadsst4":   ("HadSST 4.2.0.0",            "1850–2026", "200 native bias members + σ noise"),
-    "ersstv6":   ("ERSSTv6",                   "1850–2024", "1000 native members + 2025 frozen-offset"),
-    "cobe_sst2": ("COBE-SST 2",                "1850–2026", "+ HadSST4 pseudo-ensemble"),
-    "dcent_sst": ("DCENT-I SST (v1.1.0.0)",    "1850–2025", "200 native members (infilled)"),
+    "hadsst4":          ("HadSST 4.2.0.0",                       "1850–2026", "200 native bias members + σ noise"),
+    "ersstv6":          ("ERSSTv6",                              "1850–2024", "1000 native members + 2025 frozen-offset"),
+    "cobe_sst3":        ("COBE-SST 3 native (Ishii 2025)",       "1870–2024", "300 native perturbation members"),
+    "cobe_sst3_donor":  ("COBE-SST 3 donor (HadSST4-wrapped)",   "1850–2024", "200-member HadSST4 pseudo-ensemble around SST3 central"),
+    "dcent_sst":        ("DCENT-I SST (v1.1.0.0)",               "1850–2025", "200 native members (infilled)"),
 }
 
 
@@ -184,9 +185,9 @@ def main():
            root_title="Ocean SST ensemble",
            root_subtitle="1850–2025  (family-tree weighted)",
            fig_title=("Sea-surface temperature family tree\n"
-                      "(4 SST products, equal-weight method families)"),
+                      "(4 equal-weight method families; COBE family hosts two SST3 siblings — native + HadSST4-donor)"),
            out_path=ROOT / "family_tree_ocean.png",
-           figsize=(13, 6))
+           figsize=(13, 7))
 
 
 if __name__ == "__main__":

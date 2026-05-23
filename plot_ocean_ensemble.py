@@ -18,19 +18,29 @@ def main() -> None:
     ax.plot(summary["year"], summary["mean"], "k-", lw=1.6, label="Ensemble mean")
 
     colors = {
-        "hadsst4":   "#1f78b4",
-        "ersstv6":   "#fdae61",
-        "cobe_sst2": "#74add1",
-        "dcent_sst": "#5aae61",
+        "hadsst4":         "#1f78b4",
+        "ersstv6":         "#fdae61",
+        "cobe_sst3":       "#762a83",
+        "cobe_sst3_donor": "#9970ab",
+        "dcent_sst":       "#5aae61",
     }
     labels = {
-        "hadsst4":   "HadSST 4.2.0.0",
-        "ersstv6":   "ERSSTv6",
-        "cobe_sst2": "COBE-SST2",
-        "dcent_sst": "DCENT-I SST (v1.1.0.0)",
+        "hadsst4":         "HadSST 4.2.0.0",
+        "ersstv6":         "ERSSTv6",
+        "cobe_sst3":       "COBE-SST3 native (ensemble mean)",
+        "cobe_sst3_donor": "COBE-SST3 donor (HadSST4-wrapped)",
+        "dcent_sst":       "DCENT-I SST (v1.1.0.0)",
     }
     for name, color in colors.items():
         ax.plot(perds["year"], perds[f"{name}_mean"], color=color, lw=0.9, alpha=0.85, label=labels[name])
+
+    # Deterministic SST3 best estimate (diagnostic — the SST3 central
+    # is the shared anchor for both COBE siblings; this line should
+    # closely track both `cobe_sst3` and `cobe_sst3_donor` means).
+    if "cobe_sst3_central" in perds.columns:
+        ax.plot(perds["year"], perds["cobe_sst3_central"],
+                color="#762a83", lw=0.9, alpha=0.55, ls="--",
+                label="COBE-SST3 deterministic central (diag.)")
 
     ax.axhline(0, color="k", lw=0.4, ls="--", alpha=0.4)
     ax.set_xlim(1850, 2025)

@@ -1,8 +1,15 @@
 """
 Build a 10,000-member ensemble of annual global-mean sea-surface
-temperature (SST) anomaly, 1850-2025, by combining four SST products
-through a structural-method family tree with donor-imputed uncertainty
-for ERSSTv6 and COBE-SST2.
+temperature (SST) anomaly, 1850-2025, by combining four SST product
+families through a structural-method family tree. As of v3 (May 2026)
+the COBE family branch hosts two sibling variants of COBE-SST3 (Ishii
+et al. 2025): a native 300-member perturbation ensemble covering
+1870-2024, and a HadSST4-donor-imputed variant wrapping SST3's
+best-estimate across its full 1850-2024 best-estimate window. Each
+sibling carries P=1/8 of the tree inside 1870-2024; outside that
+window the sibling-redirect routes draws to the donor variant
+(1850-1869); beyond 2024 both COBE variants are NaN, the COBE family
+contributes 0 to that year, and the other three families renormalise.
 
 See `ocean_ensemble_methodology.md` for full description.
 
@@ -14,7 +21,12 @@ Inputs (in `Ocean Data/`):
                                                               from pull_ersstv6_members.py)
     ERSSTv6/aravg.mon.ocean.90S.90N.v6.1.0.202604.asc       (best-estimate central; used as
                                                               the post-native-end anchor)
-    COBE-SST2/COBE-SST2_global_monthly.csv                  (deterministic, derived)
+    COBE-SST3/COBE-SST3_global_monthly.csv                  (deterministic best estimate
+                                                              1850-2024, from
+                                                              prepare_cobe_sst3_global_mean.py)
+    COBE-SST3/COBE-SST3_monthly_ensemble.csv                (300 native perturbation members
+                                                              1870-2024, from
+                                                              pull_cobe_sst3_members.py)
     DCENT SST/DCENT_I_SST_monthly_ensemble.csv              (200 native members,
                                                               DCENT-I sea-fraction-weighted SST)
 
@@ -229,11 +241,30 @@ def extend_with_frozen_offset(
     return out
 
 
-def load_cobe_monthly() -> tuple[np.ndarray, np.ndarray]:
-    """COBE-SST2 monthly anomaly from our prepared global-mean CSV."""
-    df = pd.read_csv(DATA / "COBE-SST2" / "COBE-SST2_global_monthly.csv")
+def load_cobe_sst3_central_monthly() -> tuple[np.ndarray, np.ndarray]:
+    """COBE-SST3 deterministic best-estimate monthly anomaly (for diagnostics)."""
+    df = pd.read_csv(DATA / "COBE-SST3" / "COBE-SST3_global_monthly.csv")
     df = df[(df["year"] >= START_YEAR) & (df["year"] <= END_YEAR)]
     return df["year"].values, df["anomaly"].values
+
+
+def load_cobe_sst3_ensemble() -> np.ndarray:
+    """COBE-SST3: 300 native perturbation members, monthly, 1870-2024.
+    Returns (N_YEARS, 300) annual; years outside the native window are NaN."""
+    path = DATA / "COBE-SST3" / "COBE-SST3_monthly_ensemble.csv"
+    df = pd.read_csv(path)
+    mem_cols = [c for c in df.columns if c.startswith("m") and c != "month"]
+    assert len(mem_cols) == 300, f"expected 300 COBE-SST3 members, got {len(mem_cols)}"
+    # The file natively spans 1870-2024; reindex onto the build year-month grid
+    # so out-of-window months are NaN.
+    full_idx = pd.MultiIndex.from_product(
+        [np.arange(START_YEAR, END_YEAR + 1), np.arange(1, 13)],
+        names=["year", "month"],
+    )
+    df = df.set_index(["year", "month"]).reindex(full_idx)
+    monthly = df[mem_cols].values  # (N_YEARS*12, 300)
+    year_idx = full_idx.get_level_values("year").values
+    return reduce_monthly_to_annual(monthly, year_idx)
 
 
 def sparse_era_inflation(years: np.ndarray) -> np.ndarray:
@@ -265,17 +296,38 @@ def build_donor_ensemble(
 
 
 # ---------- family tree ----------
-# Equal-weight 4-leaf tree. ERSSTv6 carries its own native 1000-member
-# ensemble (Huang et al., NCEI pre-release) as of v2; only COBE-SST2
-# remains donor-imputed from HadSST4. Three of the four leaves now
-# contribute independent uncertainty templates (HadSST4 bias-perturbation
-# family, ERSSTv6 parameter family, DCENT joint-constraint family);
-# effective independent leaves ≈ 3.5.
+# v3 (May 2026) family tree: 5 leaves under a 4-branch root. Three branches
+# carry one native-ensemble leaf each at P=1/4; the COBE branch hosts two
+# siblings (SST3 native + SST2 donor-imputed) at P=1/8 each. In years
+# outside SST3's 1870-2024 perturbation window the NaN-aware sampler
+# renormalises and COBE-SST2 picks up the full 1/4 COBE-branch share.
+#
+# Effective independent uncertainty templates:
+#   - 1850-1869: 3.5 (HadSST4, ERSSTv6, DCENT; COBE-SST2 shares HadSST4)
+#   - 1870-2024: 4.0 (above + SST3's native perturbation template)
+#   - 2025+:     3.5 (back to v2 effective count; SST3 leaf NaN)
 TREE = {
-    "hadsst4":   0.25,
-    "dcent_sst": 0.25,
-    "ersstv6":   0.25,
-    "cobe_sst2": 0.25,
+    "hadsst4":         0.25,
+    "dcent_sst":       0.25,
+    "ersstv6":         0.25,
+    "cobe_sst3":       0.125,   # native 300-member perturbation ensemble (1870-2024)
+    "cobe_sst3_donor": 0.125,   # HadSST4-donor wrap around SST3's best estimate (1850-2024)
+}
+
+# Sibling-redirect rules for the NaN-aware sampler. When a leaf is NaN
+# in a given year, the *generic* renormalisation would proportionally
+# spread its weight across all finite leaves — which for the COBE branch
+# would shrink the COBE family share in years where one sibling is NaN.
+# Instead, a primary draw landing on a leaf listed here is redirected
+# to its named sibling first; only if that sibling is *also* NaN
+# (e.g. 2025, where both COBE variants lack data) do we fall back to
+# the generic finite-leaves renormalisation. This preserves the COBE
+# family at its full 1/4 of the tree wherever at least one sibling has
+# data, and lets the COBE family naturally drop to 0 in years neither
+# does.
+LEAF_NAN_SIBLING = {
+    "cobe_sst3":       "cobe_sst3_donor",  # 1850-1869: native is NaN; donor carries the branch
+    "cobe_sst3_donor": "cobe_sst3",        # symmetric (rare/never used in current windows)
 }
 
 
@@ -296,23 +348,29 @@ def main() -> None:
     ersst_central_annual = load_ersst_central_aravg()
     print(f"  aravg central anchor finite years: {np.isfinite(ersst_central_annual).sum()}")
 
-    print("Loading COBE-SST2 monthly anomaly (deterministic) ...")
-    yr_c, anom_c = load_cobe_monthly()
-    cobe_annual = reduce_monthly_to_annual(anom_c[:, None], yr_c)[:, 0]
-    print(f"  finite years: {np.isfinite(cobe_annual).sum()}")
+    print("Loading COBE-SST3 best-estimate monthly anomaly (deterministic) ...")
+    yr_c3, anom_c3 = load_cobe_sst3_central_monthly()
+    cobe_sst3_central_annual = reduce_monthly_to_annual(anom_c3[:, None], yr_c3)[:, 0]
+    print(f"  finite years: {np.isfinite(cobe_sst3_central_annual).sum()}")
+
+    print("Loading COBE-SST3 native perturbation ensemble (300 members, 1870-2024) ...")
+    cobe_sst3 = load_cobe_sst3_ensemble()
+    n3_native = int(np.isfinite(cobe_sst3).all(axis=1).sum())
+    print(f"  shape: {cobe_sst3.shape}  finite years: {n3_native}")
 
     # Re-baseline native ensembles to 1981-2010 (member-wise)
-    print("Re-baselining HadSST4, DCENT SST, ERSSTv6 native to 1981-2010 ...")
-    had_b   = rebaseline_to_1981_2010(had)
-    dce_b   = rebaseline_to_1981_2010(dce)
-    ersst_b = rebaseline_to_1981_2010(ersst_native)
-    # Re-baseline deterministic series (their best estimates) by subtracting their
-    # 1981-2010 means
+    print("Re-baselining HadSST4, DCENT SST, ERSSTv6, COBE-SST3 native to 1981-2010 ...")
+    had_b      = rebaseline_to_1981_2010(had)
+    dce_b      = rebaseline_to_1981_2010(dce)
+    ersst_b    = rebaseline_to_1981_2010(ersst_native)
+    cobe_sst3_ens_b = rebaseline_to_1981_2010(cobe_sst3)
+    # Re-baseline the SST3 best-estimate (the anchor for the donor variant and
+    # the diagnostic column) by subtracting its own 1981-2010 mean.
     def _rebase_central(a: np.ndarray) -> np.ndarray:
         mask = (YEARS >= BASELINE[0]) & (YEARS <= BASELINE[1])
         return a - np.nanmean(a[mask])
-    ersst_central_b = _rebase_central(ersst_central_annual)
-    cobe_b          = _rebase_central(cobe_annual)
+    ersst_central_b   = _rebase_central(ersst_central_annual)
+    cobe_sst3_cent_b  = _rebase_central(cobe_sst3_central_annual)
 
     # Apply Option B frozen-offset fallback for any year past ERSSTv6's native end
     print("Extending ERSSTv6 past native end with Option B frozen-offset ...")
@@ -324,29 +382,51 @@ def main() -> None:
         label="ERSSTv6",
     )
 
-    # Build donor uncertainty for COBE only (ERSSTv6 is now native)
-    print("Building COBE-SST2 donor ensemble (HadSST4 donor, sparse-era inflated) ...")
+    # Build the SST3-donor sibling: HadSST4 spread wrapped around the SST3
+    # best-estimate central, sparse-era inflated. The result is NaN in any
+    # year where the SST3 central is NaN (2025+), so this leaf naturally
+    # falls out of the sampler past the SST3 best-estimate end.
+    print("Building COBE-SST3-donor sibling (HadSST4 donor, sparse-era inflated) ...")
     infl = sparse_era_inflation(YEARS)
-    cobe_ens = build_donor_ensemble(cobe_b, had_b, had_sigma, infl)
+    cobe_sst3_donor_ens = build_donor_ensemble(cobe_sst3_cent_b, had_b, had_sigma, infl)
 
     leaves = {
-        "hadsst4":   had_b,
-        "dcent_sst": dce_b,
-        "ersstv6":   ersst_ens,
-        "cobe_sst2": cobe_ens,
+        "hadsst4":         had_b,
+        "dcent_sst":       dce_b,
+        "ersstv6":         ersst_ens,
+        "cobe_sst3":       cobe_sst3_ens_b,
+        "cobe_sst3_donor": cobe_sst3_donor_ens,
     }
 
-    # Sanity print
-    print("\nSanity: ensemble mean (best estimate) for 2024 (re-baselined to 1981-2010):")
-    iy = int(np.where(YEARS == 2024)[0][0])
+    # Sanity print at several diagnostic years (covering pre-SST3-window,
+    # mid-window, and post-window for the COBE branch)
+    print("\nSanity: ensemble mean (best estimate) by year (re-baselined to 1981-2010):")
+    print(f"  {'leaf':<10s}  {'1880':>14s}  {'1900':>14s}  {'2020':>14s}  {'2024':>14s}  {'2025':>14s}")
     for name, ens in leaves.items():
-        print(f"  {name:10s}: {np.nanmean(ens[iy]):+.3f} °C  spread(1σ)={np.nanstd(ens[iy], ddof=1):.3f}")
+        row = []
+        for y in (1880, 1900, 2020, 2024, 2025):
+            iy = int(np.where(YEARS == y)[0][0])
+            if np.isfinite(ens[iy]).any():
+                mean = np.nanmean(ens[iy])
+                sd = np.nanstd(ens[iy], ddof=1)
+                row.append(f"{mean:+.3f}±{sd:.3f}")
+            else:
+                row.append("    NaN     ")
+        print(f"  {name:<10s}  " + "  ".join(f"{x:>14s}" for x in row))
 
-    # diagnostics CSV
+    # diagnostics CSV (per-dataset best estimate + 1σ). For COBE branch,
+    # also emit the SST3 deterministic best estimate as a separate column
+    # so we can visualise how the SST3 best-estimate compares to SST2 and
+    # to the SST3-ensemble mean across the SST3 record.
     diag = pd.DataFrame({"year": YEARS})
     for name, ens in leaves.items():
         diag[f"{name}_mean"] = np.nanmean(ens, axis=1)
         diag[f"{name}_sd"]   = np.nanstd(ens, axis=1, ddof=1)
+    # The SST3 best-estimate central is logged separately as a diagnostic;
+    # the SST3 native and SST3 donor leaves both inherit it (the former
+    # via member trajectories that center on it; the latter as the explicit
+    # anchor of the HadSST4 donor wrap).
+    diag["cobe_sst3_central"] = cobe_sst3_cent_b
     diag.to_csv(ROOT / "ocean_ensemble_perdataset.csv", index=False, float_format="%.5f")
     print(f"\nWrote ocean_ensemble_perdataset.csv")
 
@@ -362,6 +442,7 @@ def main() -> None:
     ])
 
     # NaN-aware per-year sampler (same pattern as build_land_ensemble.py)
+    # with explicit sibling redirect for LEAF_NAN_SIBLING entries (see TREE comment).
     finite_by_year = {
         iy: [i for i, n in enumerate(leaf_names) if np.isfinite(leaves[n][iy]).any()]
         for iy, _ in enumerate(YEARS)
@@ -375,8 +456,20 @@ def main() -> None:
         for m in range(N_FINAL):
             pl = primary_leaf[m]; mi = primary_member_idx[m]
             if not np.isfinite(leaves[leaf_names[pl]][iy, mi]):
-                pl = RNG.choice(finite_leaves, p=renorm)
-                mi = RNG.integers(0, leaf_member_counts[leaf_names[pl]])
+                # Step 1: sibling-redirect if rule exists for the primary leaf
+                sibling_name = LEAF_NAN_SIBLING.get(leaf_names[pl])
+                redirected = False
+                if sibling_name is not None:
+                    sib_idx = leaf_to_idx[sibling_name]
+                    if np.isfinite(leaves[sibling_name][iy]).any():
+                        pl = sib_idx
+                        mi = RNG.integers(0, leaf_member_counts[sibling_name])
+                        redirected = True
+                # Step 2: fall back to generic finite-leaves renormalisation
+                if not redirected:
+                    pl = RNG.choice(finite_leaves, p=renorm)
+                    mi = RNG.integers(0, leaf_member_counts[leaf_names[pl]])
+                # Step 3: redraw on rare per-member NaN within the chosen leaf
                 tries = 0
                 while not np.isfinite(leaves[leaf_names[pl]][iy, mi]) and tries < 20:
                     mi = RNG.integers(0, leaf_member_counts[leaf_names[pl]])
@@ -402,16 +495,119 @@ def main() -> None:
     print(f"Saved ocean_ensemble.csv ({out.shape}) and ocean_ensemble_summary.csv")
 
     leaf_counts = pd.DataFrame({"leaf": leaf_names})
-    leaf_counts["share_2024"] = [
-        (member_leaf_log[int(np.where(YEARS == 2024)[0][0])] == leaf_to_idx[n]).mean()
-        for n in leaf_names
-    ]
-    leaf_counts["share_1900"] = [
-        (member_leaf_log[int(np.where(YEARS == 1900)[0][0])] == leaf_to_idx[n]).mean()
-        for n in leaf_names
-    ]
-    print("\nLeaf shares of the final 10,000 in 1900 and 2024:")
+    for y in (1860, 1900, 2020, 2024, 2025):
+        iy = int(np.where(YEARS == y)[0][0])
+        leaf_counts[f"share_{y}"] = [
+            (member_leaf_log[iy] == leaf_to_idx[n]).mean() for n in leaf_names
+        ]
+    print("\nLeaf shares of the final 10,000 (COBE branch sums to ~25% in 1850–2024;\n"
+          "drops to ~0% in 2025 where neither SST3 variant has data):")
     print(leaf_counts.to_string(index=False))
+
+    # ---------- family-tree invariants (hard-fail if violated) ----------
+    # COBE family = cobe_sst3 + cobe_sst3_donor. ±0.020 tolerance is generous
+    # against 10k-Bernoulli 3σ at p=0.25 (~0.013).
+    print("\nFamily-tree invariant check ...")
+    SHARE_TOL = 0.020
+    invariant_failures: list[str] = []
+
+    def leaf_share(year: int, leaf: str) -> float:
+        iy = int(np.where(YEARS == year)[0][0])
+        return float((member_leaf_log[iy] == leaf_to_idx[leaf]).mean())
+
+    for y in (1860, 1900, 2020, 2024, 2025):
+        cobe = leaf_share(y, "cobe_sst3") + leaf_share(y, "cobe_sst3_donor")
+        hsst = leaf_share(y, "hadsst4")
+        erst = leaf_share(y, "ersstv6")
+        dcnt = leaf_share(y, "dcent_sst")
+
+        # The COBE family is expected to carry 1/4 in 1850–2024 (where at
+        # least one COBE sibling is finite) and 0 in 2025 (where both are
+        # NaN and the other three families renormalise to ~1/3 each).
+        if y <= 2024:
+            for fam, val in (("COBE", cobe), ("HadSST", hsst), ("ERSST", erst), ("DCENT", dcnt)):
+                if abs(val - 0.25) > SHARE_TOL:
+                    invariant_failures.append(
+                        f"{y}: family {fam} share = {val:.4f} (expected 0.25 ± {SHARE_TOL})"
+                    )
+        else:
+            # 2025: COBE family contributes 0; other three renormalise to ~1/3 each
+            if cobe != 0.0:
+                invariant_failures.append(
+                    f"{y}: COBE family share = {cobe:.4f} (expected 0; both variants NaN)"
+                )
+            for fam, val in (("HadSST", hsst), ("ERSST", erst), ("DCENT", dcnt)):
+                if abs(val - 1.0 / 3.0) > SHARE_TOL:
+                    invariant_failures.append(
+                        f"{y}: family {fam} share = {val:.4f} (expected 0.333 ± {SHARE_TOL}; "
+                        f"COBE family absent, renorm over remaining three)"
+                    )
+
+        # Within-COBE branch: 1/8 + 1/8 inside 1870–2024, and donor carries
+        # the full 1/4 in 1850–1869 (sibling-redirect from the NaN native).
+        if 1870 <= y <= 2024:
+            n3 = leaf_share(y, "cobe_sst3")
+            nd = leaf_share(y, "cobe_sst3_donor")
+            if abs(n3 - 0.125) > SHARE_TOL:
+                invariant_failures.append(
+                    f"{y}: cobe_sst3 native share = {n3:.4f} inside window (expected 0.125)")
+            if abs(nd - 0.125) > SHARE_TOL:
+                invariant_failures.append(
+                    f"{y}: cobe_sst3_donor share = {nd:.4f} inside window (expected 0.125)")
+        elif y <= 1869:
+            n3 = leaf_share(y, "cobe_sst3")
+            nd = leaf_share(y, "cobe_sst3_donor")
+            if n3 != 0.0:
+                invariant_failures.append(
+                    f"{y}: cobe_sst3 native share = {n3:.4f} before 1870 (expected 0)")
+            if abs(nd - 0.25) > SHARE_TOL:
+                invariant_failures.append(
+                    f"{y}: cobe_sst3_donor share = {nd:.4f} before 1870 "
+                    f"(expected 0.25 via sibling-redirect from NaN native)")
+
+    if invariant_failures:
+        for f in invariant_failures:
+            print(f"  FAIL: {f}")
+        raise RuntimeError(
+            "Family-tree invariant violated — sibling-redirect or TREE weights "
+            "are mis-specified. See failures above."
+        )
+    print("  All family-share invariants satisfied at 1860/1900/2020/2024/2025.")
+
+    # ---------- boundary σ-step diagnostics (soft) ----------
+    # Logs the COBE-branch ensemble σ on either side of the COBE-window
+    # boundaries (1869→1870 and 2024→2025) so wildly mis-scaled spreads
+    # would be visible at run time.
+    cobe_branch_member_mask = (
+        (member_leaf_log == leaf_to_idx["cobe_sst3"]) |
+        (member_leaf_log == leaf_to_idx["cobe_sst3_donor"])
+    )
+    for y_in, y_out in ((1870, 1869), (2024, 2025)):
+        i_in = int(np.where(YEARS == y_in)[0][0])
+        i_out = int(np.where(YEARS == y_out)[0][0])
+        cobe_in = final[i_in][cobe_branch_member_mask[i_in]]
+        cobe_out = final[i_out][cobe_branch_member_mask[i_out]]
+        if cobe_in.size > 0 and cobe_out.size > 0:
+            s_in = np.nanstd(cobe_in, ddof=1)
+            s_out = np.nanstd(cobe_out, ddof=1)
+            ratio = s_in / s_out if s_out > 0 else float("nan")
+            flag = " <-- WARNING: >50% jump" if (s_out > 0 and abs(ratio - 1.0) > 0.5) else ""
+            print(f"  COBE-branch σ {y_out}→{y_in}: {s_out:.4f} → {s_in:.4f} "
+                  f"(ratio {ratio:.3f}){flag}")
+        else:
+            # 2024→2025: COBE branch has no members in 2025 (both NaN)
+            print(f"  COBE-branch σ {y_out}→{y_in}: "
+                  f"{'(absent)' if cobe_out.size == 0 else f'{np.nanstd(cobe_out, ddof=1):.4f}'} "
+                  f"→ "
+                  f"{'(absent)' if cobe_in.size == 0 else f'{np.nanstd(cobe_in, ddof=1):.4f}'}")
+
+    # ---------- convention log ----------
+    print("\nCOBE-branch sea-ice convention composition:")
+    print("  1850-1869:  100% SST3-donor (SST3 central interpolated near-freezing,"
+          " HadSST4 spread template)")
+    print("  1870-2024:  50% SST3-native / 50% SST3-donor"
+          " (both use SST3's interpolated-near-freezing convention)")
+    print("  2025+:      COBE family contributes 0")
 
 
 if __name__ == "__main__":
