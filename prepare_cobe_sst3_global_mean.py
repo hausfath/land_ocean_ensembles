@@ -56,8 +56,14 @@ CLIM_START, CLIM_END = 1991, 2020
 def download(url: str, dest: Path, attempts: int = 4) -> None:
     for k in range(attempts):
         try:
+            # --connect-timeout / --max-time guard against stale TCP routes
+            # after a system sleep (otherwise curl hangs indefinitely on a
+            # half-open connection). 300 s is well above typical transfer
+            # times for any file we pull.
             subprocess.run(
-                ["curl", "-L", "--fail", "-sS", "-o", str(dest), url],
+                ["curl", "-L", "--fail", "-sS",
+                 "--connect-timeout", "30", "--max-time", "300",
+                 "-o", str(dest), url],
                 check=True,
             )
             if dest.stat().st_size < 500_000:

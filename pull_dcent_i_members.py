@@ -46,8 +46,14 @@ def download(fid: int, dest: Path, attempts: int = 4) -> None:
     url = DATAVERSE_URL.format(fid=fid)
     for k in range(attempts):
         try:
+            # --connect-timeout / --max-time guard against stale TCP routes
+            # after a system sleep (otherwise curl hangs indefinitely on a
+            # half-open connection). 300 s is well above typical transfer
+            # times for the ~42 MB members.
             subprocess.run(
-                ["curl", "-L", "--fail", "-sS", "-o", str(dest), url],
+                ["curl", "-L", "--fail", "-sS",
+                 "--connect-timeout", "30", "--max-time", "300",
+                 "-o", str(dest), url],
                 check=True,
             )
             if dest.stat().st_size < 1_000_000:
