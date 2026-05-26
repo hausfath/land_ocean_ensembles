@@ -9,9 +9,8 @@ final 10,000 draws sample across products by equal-weight method
 families.
 
 This work uses the same overall framework as the Thorne et al. (2026)
-SST-grouped GMST ensemble, but applied to LSAT and SST separately so
-that downstream analyses can decompose GMST structural uncertainty by
-component.
+SST-grouped GMST ensemble, applied independently to LSAT and SST to
+produce two component-domain ensembles.
 
 ## Headline result
 
@@ -19,12 +18,12 @@ component.
 
 | Year | LSAT median | LSAT 5–95% | SST median | SST 5–95% |
 |------|------------:|----------:|----------:|---------:|
-| 1850 | −0.18 °C    | −0.69 to +0.42 | −0.02 °C | −0.52 to +0.23 |
-| 1900 | +0.32 °C    | +0.07 to +0.56 | +0.09 °C | −0.10 to +0.22 |
-| 1950 | +0.20 °C    | +0.11 to +0.27 | +0.04 °C | −0.08 to +0.26 |
-| 2000 | +1.02 °C    | +0.99 to +1.06 | +0.46 °C | +0.45 to +0.47 |
-| 2024 | +2.26 °C    | +2.15 to +2.39 | +1.10 °C | +1.04 to +1.14 |
-| 2025 | +2.09 °C    | +1.95 to +2.23 | +0.99 °C | +0.93 to +1.02 |
+| 1850 | −0.18 °C    | −0.69 to +0.42 | −0.03 °C | −0.50 to +0.24 |
+| 1900 | +0.32 °C    | +0.07 to +0.56 | +0.11 °C | −0.09 to +0.21 |
+| 1950 | +0.20 °C    | +0.11 to +0.27 | +0.06 °C | −0.06 to +0.16 |
+| 2000 | +1.02 °C    | +0.99 to +1.06 | +0.48 °C | +0.46 to +0.49 |
+| 2024 | +2.26 °C    | +2.15 to +2.39 | +1.13 °C | +1.06 to +1.16 |
+| 2025 | +2.09 °C    | +1.95 to +2.23 | +1.02 °C | +0.95 to +1.04 |
 
 *Anomalies relative to the 1850–1900 average. Percentiles are computed
 on the 1981–2010 modern baseline (where the ensembles have minimum
@@ -32,7 +31,7 @@ spread by construction) and then shifted by a constant offset so the
 median has zero mean over 1850–1900 — the "modern baseline plus
 offset" approach. This preserves the modern-era uncertainty
 representation while reporting against preindustrial. Offsets:
-land +1.02 °C, ocean +0.47 °C.*
+land +1.02 °C, ocean +0.49 °C.*
 
 ## Datasets
 
@@ -47,14 +46,24 @@ land +1.02 °C, ocean +0.47 °C.*
 | NOAA Land v6.1.0 | No (DCLSAT donor, m 1–100) | 1850–2026 | `ncei.noaa.gov/.../noaa-global-surface-temperature/v6.1` |
 | C-LSAT 2.1 (CMA homogenization) | No (DCLSAT donor, m 101–200) | 1850–2025 | `gwpu.net` / [figshare:28255394](https://doi.org/10.6084/m9.figshare.28255394) |
 
-### SST (4 products)
+### SST (4 method families; 5 leaves)
 
 | Dataset | Native ensemble | Time | Source |
 |---------|-----------------|------|--------|
 | HadSST 4.2.0.0 | 200 native bias members + σ noise | 1850–2026 | `metoffice.gov.uk/hadobs/hadsst4` |
 | ERSSTv6 (NOAA pre-release ensemble) | 1000 native members (1850–2024) + frozen-offset fallback for 2025 | 1850–2025 | `ncei.noaa.gov/pub/data/cmb/ersst/v5/tmp/ersstv6.ensemble/` (contact `boyin.huang@noaa.gov`) |
-| COBE-SST 2 | No (HadSST4 donor) | 1850–2026 | NOAA PSL mirror of JMA |
+| COBE-SST 3 (Ishii et al., 2025) | 300 native perturbation members (1870–2024) + HadSST4-donor sibling around SST3's best estimate (1850–2024) | 1850–2024 | `climate.mri-jma.go.jp/pub/archives/Ishii-et-al_COBE-SST3/` |
 | DCENT-I SST (v1.1.0.0, native `sst` field) | 200 native members (infilled) | 1850–2025 | Harvard Dataverse `doi:10.7910/DVN/ROG38Q` |
+
+Within the COBE method family, two SST3 sibling leaves (native
+perturbations and HadSST4-donor wrap) share P=1/8 each inside
+1870–2024; outside that window the donor sibling absorbs the branch
+in 1850–1869, and in 2025+ the COBE family contributes 0 while the
+other three families renormalise. See
+[`ocean_ensemble_methodology.md`](ocean_ensemble_methodology.md) §2.4
+and §2.5 for the full description. COBE-SST2 was used in earlier
+versions and is retired in favour of SST3; the SST2 prep script and
+its CSV are retained for archival cross-checks.
 
 ## Methodology
 
@@ -83,8 +92,10 @@ land_ocean_temps/
 ├── download_data.sh                  # fetch raw datasets into Land Data/ + Ocean Data/
 ├── pull_dcent_i_members.py           # data prep: DCENT-I 200 members → LSAT + SST CSVs
 ├── pull_ersstv6_members.py           # data prep: ERSSTv6 1000 native members
+├── pull_cobe_sst3_members.py         # data prep: COBE-SST3 300 native perturbations
 ├── prepare_hadsst_global_ensemble.py # data prep: HadSST4 gridded → 200 globals
-├── prepare_cobe_global_mean.py       # data prep: COBE-SST2 NetCDF → anomaly CSV
+├── prepare_cobe_sst3_global_mean.py  # data prep: COBE-SST3 best estimate → anomaly CSV
+├── prepare_cobe_global_mean.py       # data prep: COBE-SST2 NetCDF → anomaly CSV (archival)
 ├── prepare_c_lsat_global_mean.py     # data prep: C-LSAT 2.1 NetCDF → anomaly CSV
 ├── dcent_i_member_fileids.json       # Harvard Dataverse manifest for DCENT-I v1.1.0.0
 │
@@ -134,8 +145,9 @@ will lose the native bias-dimension covariance.
 ```bash
 python3 pull_dcent_i_members.py               # ~17 min, ~42 MB peak transient (LSAT + SST in one pass)
 python3 pull_ersstv6_members.py               # ~2.7 hr, ~135 MB transient (iterative)
+python3 pull_cobe_sst3_members.py             # ~3-15 hr, ~155 MB transient (per-member streaming)
 python3 prepare_hadsst_global_ensemble.py     # ~30 s
-python3 prepare_cobe_global_mean.py           # ~5 s
+python3 prepare_cobe_sst3_global_mean.py      # ~3 min
 python3 prepare_c_lsat_global_mean.py         # ~2 s
 ```
 
@@ -179,4 +191,4 @@ licenses of their underlying input datasets — see the methodology MDs
 for per-dataset references and licensing terms (CRUTEM5 / HadSST4 /
 GloSATLAT: Open Government Licence v3; NOAA / NCEI: public domain;
 Berkeley Earth: CC BY 4.0; DCENT: CC0 via Harvard Dataverse;
-COBE-SST2: NOAA PSL terms).
+COBE-SST3: JMA/MRI archive, non-commercial use only).

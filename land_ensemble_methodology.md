@@ -7,10 +7,10 @@ Thorne et al. (2026, ESSD discussion paper 2025-825), but applied to
 land-only datasets and with a much smaller catalogue.
 
 The goal is to produce an LSAT analogue of the Thorne SST-grouped
-ensemble so that, downstream, an LSAT ensemble × SST ensemble ×
-land-fraction weighting can reconstruct a GMST ensemble whose
-structural uncertainty is decomposed by component. This first pass
-concerns *only* the LSAT side.
+ensemble — a component-domain ensemble of global LSAT with
+structural-method uncertainty captured by the family tree. This
+document concerns *only* the LSAT side; the sister ocean methodology
+is described in `ocean_ensemble_methodology.md`.
 
 ## Input datasets (LSAT, qualifying products in May 2026)
 
@@ -387,13 +387,12 @@ of his own approach in his Supplement §3).
 6. **Bias toward over-coverage low-frequency / under-coverage
    high-frequency** in CRUTEM5/GloSATLAT synthesis (Section 2.2).
 
-## Safe vs unsafe downstream uses
+## Safe vs unsafe uses
 
 **Safe:**
-- Plotting central estimate + 90% band for visual comparison with a
-  GMST ensemble.
-- Propagating to GMST via SST ensemble × land-fraction combination.
+- Plotting central estimate + 90% band.
 - Reporting the ensemble mean as the LSAT best estimate.
+- Comparing with the sister ocean SST ensemble for context.
 
 **Unsafe:**
 - Reporting tail-period 2.5/97.5 percentiles as if calibrated

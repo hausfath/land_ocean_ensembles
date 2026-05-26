@@ -9,10 +9,10 @@ sister methodology document `land_ensemble_methodology.md` for LSAT
 and should be read alongside it.
 
 The goal is to produce an SST analogue of the SST-grouped Thorne
-ensemble so that, downstream, an SST ensemble × LSAT ensemble ×
-land-fraction weighting can reconstruct a GMST ensemble whose
-structural uncertainty is decomposed by component. This memo concerns
-*only* the SST side.
+ensemble — a component-domain ensemble of global SST with
+structural-method uncertainty captured by the family tree. This
+document concerns *only* the SST side; the sister land methodology
+is described in `land_ensemble_methodology.md`.
 
 ## Input datasets (SST, qualifying products in May 2026)
 
@@ -577,10 +577,9 @@ each at P=1/4. On the LSAT side the CRU-lineage family splits two ways
 (CRUTEM5 + GloSATLAT) so its leaves carry P=1/10 each; all other LSAT
 leaves carry P=1/5. The dynamical-constraint family is the only one
 present on both sides (DCLSAT at P=1/5 on land; DCENT SST at P=1/4 on
-ocean). This asymmetry is intentional — the SST catalogue lacks an
-analogue of the CMA-homogenization family — and should not be
-"corrected" when SST × LSAT are recombined into a GMST ensemble:
-draws should still be independent across sides.
+ocean). The asymmetry is intentional — the SST catalogue lacks an
+analogue of the CMA-homogenization family — and reflects the distinct
+catalogues qualifying in each domain.
 
 **Planned sensitivity tests (out of scope for v3):**
 - **Information-weighted COBE-branch split** (alternative to the
@@ -680,7 +679,7 @@ statistics that span the boundary year: per-member short-window trends
 ending in 2025 (e.g. a 2015–2025 trend computed from one member's
 trajectory) inherit extra noise from the 2025 re-draw, and per-member
 autocorrelation across the boundary is broken for the ~25% of members
-affected. The "Unsafe downstream uses" section flags trend-significance
+affected. The "Safe vs unsafe uses" section flags trend-significance
 counts that depend on per-member trajectory coherence; these were
 already on the unsafe list and remain so.
 
@@ -749,15 +748,12 @@ leaves cover the full record.
    ~0.01–0.05 °C to modern-era spread, absorbed by the family tree
    as structural diversity rather than reconciled.
 
-## Safe vs unsafe downstream uses
+## Safe vs unsafe uses
 
 **Safe:**
-- Plotting central estimate + 90% band; comparing with the LSAT
-  ensemble.
-- Combining SST ensemble × LSAT ensemble × land-fraction to
-  reconstruct a structurally-attributed GMST ensemble, **provided** the
-  draws are independent (see GMST combination notes below).
+- Plotting central estimate + 90% band.
 - Reporting the ensemble mean as the SST best estimate.
+- Comparing with the sister land LSAT ensemble for context.
 
 **Unsafe:**
 - Reporting tail-period 2.5/97.5 percentiles as if calibrated
@@ -772,29 +768,11 @@ leaves cover the full record.
   year-by-year statistics (mean, percentile, σ at year 2025) are not
   affected; the inflation is specific to trajectory-coherence-dependent
   metrics.
-- Constructing a GMST ensemble that attempts to *pair* DCENT SST and
-  DCLSAT members by index. DCENT's joint dynamical consistency is
-  destroyed once members are sampled independently by the family-tree
-  sampler (most of the 10,000 final SST members come from non-DCENT
-  leaves anyway). Do not assume the SST and LSAT files retain DCENT's
-  joint pairing — they do not.
-
-## GMST combination notes (cross-cutting)
-
-When the SST and LSAT 10,000-member ensembles are combined to produce
-a structural-uncertainty GMST ensemble, draws should be made
-**independently** from each file:
-- LSAT uses **DCLSAT** as donor for its imputed leaf (NOAA Land).
-- SST uses **HadSST4** as donor for the SST3-donor sibling within the
-  COBE branch.
-- No donor product is shared between LSAT and SST, so cross-component
-  imputation correlation is zero by construction.
-
-Therefore: pair an LSAT member (column m_i in `land_ensemble.csv`)
-with an SST member (column m_j in `ocean_ensemble.csv`) by drawing
-both indices uniformly and independently from {1..10000}. Do not
-attempt to align by member index — the indices have no shared
-provenance.
+- Pairing DCENT SST and DCLSAT members by index across sister files.
+  DCENT's joint dynamical consistency is destroyed once members are
+  sampled independently by the family-tree sampler (most of the
+  10,000 final SST members come from non-DCENT leaves anyway), so the
+  SST and LSAT outputs do not retain DCENT's joint pairing.
 
 ## File outputs
 
