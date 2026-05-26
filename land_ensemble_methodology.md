@@ -227,8 +227,9 @@ its donor-imputed uncertainty is flagged in the limitations section.
 
 ### 2.6 C-LSAT 2.1 — deterministic best estimate + DCLSAT-donor uncertainty (members 101–200)
 
-C-LSAT 2.1 (Sun, Li, et al., Sun Yat-sen University; updates of the
-Xu et al. 2018 "C-LSAT" pipeline; hosted at `gwpu.net` and figshare
+C-LSAT 2.1 (Sun, Li, et al., Sun Yat-sen University; the v2.1 update
+of the Xu et al. 2018 "C-LSAT" / Sun et al. 2021 "C-LSAT 2.0" pipeline;
+hosted at `gwpu.net` and figshare
 [doi:10.6084/m9.figshare.28255394](https://doi.org/10.6084/m9.figshare.28255394))
 contributes a distinct method-family lineage to the LSAT side:
 station-level homogenization on a merged station network that
@@ -238,6 +239,16 @@ Chinese / Russian / Latin-American collections). The structural
 distinction from NOAA PHA is real: C-LSAT uses MASH-style penalized
 multiple-reference tests rather than NOAA's pairwise SNHT cascade,
 and the input network differs by ~20% pre-1950.
+
+The C-LSAT lineage is *not* new since AR6: AR6 WG1 Chapter 2 included
+C-LSAT 2.0 (Sun et al., 2021) as the land component of the China-MST
+product (Table 2.3, qualifying as "Land only"; LSAT trend rows
+contributing to the AR6 LSAT average in Table 2.4). What is new in
+this build is (a) the version update from 2.0 to 2.1, and (b)
+treating C-LSAT as an explicit CMA-homogenization method family at
+P=1/5 of the LSAT tree, rather than averaging it into an unweighted
+multi-product mean alongside HadCRUT5 / NOAA / Berkeley / Kadow as
+AR6 did.
 
 **Pre-integration diagnostic.** Decadal r(C-LSAT, CRUTEM5) over
 1860–1900 is 0.31–0.86 (mean 0.72), comparable to the pairwise r
