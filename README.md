@@ -51,7 +51,7 @@ land +1.02 °C, ocean +0.49 °C.*
 | Dataset | Native ensemble | Time | Source |
 |---------|-----------------|------|--------|
 | HadSST 4.2.0.0 | 200 native bias members + σ noise | 1850–2026 | `metoffice.gov.uk/hadobs/hadsst4` |
-| ERSSTv6 (NOAA pre-release ensemble) | 1000 native members (1850–2024) + frozen-offset fallback for 2025 | 1850–2025 | `ncei.noaa.gov/pub/data/cmb/ersst/v5/tmp/ersstv6.ensemble/` (contact `boyin.huang@noaa.gov`) |
+| ERSSTv6 (NOAA pre-release ensemble) | 1000 native members + frozen-offset fallback at the 2025 boundary | 1850–2025 | `ncei.noaa.gov/pub/data/cmb/ersst/v5/tmp/ersstv6.ensemble/` (contact `boyin.huang@noaa.gov`) |
 | COBE-SST 3 (Ishii et al., 2025) | 300 native perturbation members (1870–2024) + HadSST4-donor sibling around SST3's best estimate (1850–2024) | 1850–2024 | `climate.mri-jma.go.jp/pub/archives/Ishii-et-al_COBE-SST3/` |
 | DCENT-I SST (v1.1.0.0, native `sst` field) | 200 native members (infilled) | 1850–2025 | Harvard Dataverse `doi:10.7910/DVN/ROG38Q` |
 
