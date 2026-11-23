@@ -29,20 +29,21 @@ COBE-SST3 (Ishii et al. 2025) supersedes COBE-SST2 methodologically:
 it introduces a maritime air temperature (NMAT) correction in the SST
 bias-adjustment step that improves joint consistency with land
 records, and distributes a native 300-member perturbation ensemble
-representing bias-correction and NMAT-input uncertainty. We use
+built from its analysis errors (Ishii et al. 2025: "A set of perturbed
+COBE-SST3 was constructed, based on the analysis errors", as the sum of
+low-frequency, interannual and daily perturbations). We use
 COBE-SST3 as the sole COBE-family product in the family tree, hosted
 as two sibling variants within a single COBE-family branch:
 
 - **COBE-SST3 native** — the 300-member perturbation ensemble, finite
   for 1870–2024.
-- **COBE-SST3 donor** — the SST3 best estimate (1850–2024) wrapped in
-  a HadSST4-shaped uncertainty envelope (Section 2.5 describes the
-  donor recipe). This sibling provides COBE-family uncertainty in the
+- **COBE-SST3 donor** — the SST3 best estimate (1850–2024) with
+  HadSST4's error model, excluding coverage (Section 2.5). This sibling provides COBE-family uncertainty in the
   1850–1869 sliver where SST3's native perturbations don't reach.
 
 Both siblings share SST3's best-estimate trajectory; they differ only
-in *how* uncertainty is represented (native bias-correction
-perturbations vs. donor-imputed HadSST4-shaped spread). Inside
+in *how* uncertainty is represented (native analysis-error
+perturbations vs. HadSST4's bias and measurement error model). Inside
 1870–2024 each carries P=1/8 of the tree; in 1850–1869 the donor
 sibling carries the full 1/4 of the COBE-family branch via
 sibling-redirect (Step 4). In 2025+ neither sibling has SST3 data and
@@ -71,13 +72,10 @@ member spanning 1870–2024.
 The Met Office distributes the HadSST4 200-member ensemble as gridded
 5°×5° NetCDF in four 50-member zips totalling ~1.7 GB. We download
 all four, area-mean each member's monthly grids to produce 200
-global-mean monthly series, and save a single CSV
-(`HadSST.4.2.0.0_global_ensemble_monthly.csv`). This preserves the
-native inter-component covariance structure of the 200 trajectories,
-which would be lost in a synthesize-from-σ approach. We then **add**
-measurement+sampling uncertainty (the uncorrelated and correlated σ
-columns from the CSV summary, which are not represented in the bias
-ensemble) by AR(1) noise per member — see Step 2.1 for the recipe.
+global-mean monthly series, save a single CSV
+(`HadSST.4.2.0.0_global_ensemble_monthly.csv`), and delete the zips.
+These members sample the bias adjustments only; measurement, sampling
+and coverage uncertainty are added as described in Step 2.1.
 
 ## Step 1 — Common time/baseline grid
 
@@ -157,40 +155,58 @@ We use native counts where available (HadSST4 200 native bias members
 for 1850–1869 coverage and as a second within-branch uncertainty
 template inside 1870–2024.
 
-### 2.1 HadSST4 — area-mean 200 native gridded members + add measurement/sampling noise
+### 2.1 HadSST4 — 200 native bias members + annual noise from the published components
 
-The 200 HadSST4 ensemble members published as gridded 5°×5° monthly
-NetCDFs sample the **bias-adjustment** dimension of uncertainty (bucket
-vs. engine-room vs. buoy bias model parameters). They do NOT include
-measurement/sampling uncertainty (`uncorrelated` and `correlated` σ
-in the CSV summary), nor coverage uncertainty.
+The 200 published members sample the **bias-adjustment** uncertainty
+only. The HadSST.4.2.0.0 Product User Guide (PUG) states that the four
+global-mean uncertainty components (uncorrelated, correlated,
+coverage, bias) are independent, with the bias uncertainty
+"represented by the spread of 200-member HadSST anomaly ensemble".
 
-We construct the per-dataset ensemble in two parts:
-1. **Native bias ensemble.** Download the 4 zips of 50 members each,
-   unzip, and for each of the 200 NetCDFs compute the area-weighted
-   (cos lat) global ocean mean per month (skipping NaN cells). This
-   yields 200 monthly global-mean anomaly time series 1850-01 to
-   2026-03 directly from the published HadSST4 ensemble — preserving
-   the native temporal covariance of the bias dimension.
-2. **Add measurement + sampling + coverage noise.** To each member's
-   monthly series, add Gaussian noise terms reproducing the
-   uncorrelated, correlated, and coverage σ from the CSV:
-   - uncorrelated: AR(1) noise (ρ = 0.3 month-to-month) with marginal
-     σ = `u_unc(t)`,
-   - correlated: per-member scalar α ~ N(0,1) × `u_corr(t)`,
-   - coverage:  per-member scalar β ~ N(0,1) × `u_cov(t)`.
-   These additions match the Morice-style decomposition used for
-   CRUTEM5/GloSATLAT/HadSST4 in the literature; together with the
-   native bias ensemble they reconstruct HadSST4's full uncertainty
-   envelope as documented by Kennedy et al. (2019).
+The leaf has 2,000 members. Member *k* is native bias member
+*k mod 200* plus an independent annual noise draw built from the
+published ANNUAL global components (`HadSST.4.2.0.0_annual_GLOBE.csv`):
 
-Annual means are computed from each 12-month member sequence after
-both ingredients are summed.
+- **Uncorrelated:** white noise with the annual σ (the published annual
+  σ is the monthly σ divided by √12).
+- **Correlated** (platform micro-biases): AR(1) with a 1-year e-folding
+  time (annual lag-1 0.37). The PUG assumes these errors are "fully
+  correlated [within a year], and completely uncorrelated with the
+  adjacent year". Kennedy et al. (2011) found 2.25–7.5 effectively
+  independent months per year, which bounds the year-to-year
+  correlation at about 0.4. Sensitivities: white (the PUG convention),
+  3-year e-folding, and the correlated σ divided by 1.5 (the published
+  annual value is an upper bound under that n_eff).
+- **Coverage:** standardised process with corr(L) = (1 − p)·φ^L + p,
+  scaled by the published annual coverage σ. *p* and *φ* come from
+  `estimate_sst_coverage_persistence.py`, which applies HadSST4's
+  monthly coverage (from `HadSST.4.2.0.0_median.nc`) to every year of
+  HadISST1 (reduced to 5° by `prepare_hadisst_5deg.py`), as the PUG
+  describes the Met Office's own estimate ("subsampling from a complete
+  SST field (provided by HadISST.1.1.0.0) … the RMS difference").
+  With hemispheres averaged as (NH + SH)/2 and HadISST 1950–2020, the
+  estimate is 0.98× the published monthly coverage σ and 1.05× the
+  annual σ (annual/monthly ratio 0.85 vs published 0.81). Uncentred
+  lag correlations over the same years give *p* = 0.56, *φ* = 0.46
+  (`sst_coverage_persistence_fit.json`): about half the coverage error
+  is a persistent offset tied to each year's coverage pattern.
+  Detrended (*p* = 0.01, *φ* = 0.41), white and fully persistent
+  versions are sensitivity runs.
 
-After this step the resulting envelope should match HadSST4's
-published annual total σ to within a few percent (the only
-approximations are the ρ=0.3 AR(1) choice and the perfect-time-
-correlation assumption for `correlated` and `coverage`).
+Validation (4,000 draws): each component's annual SD on HadSST4's
+native baseline is within 3% of the published annual σ. Across the
+sensitivity runs, the SST ensemble's spread in 1850–1900 to 2016–2025
+change is 0.128–0.129 °C and its 1980–2025 trend spread
+0.011–0.012 °C/decade; the 2016–2025 median moves by at most
+0.005 °C.
+
+The resulting HadSST4 leaf has larger year-to-year scatter than the
+native ERSSTv6, DCENT-I and COBE-SST3 ensembles (rebaselined SD in
+1995: 0.028 vs 0.004–0.006 °C). This follows from HadSST4's published
+budget: its coverage term is for a non-infilled product, and its
+correlated term assumes full within-year correlation. DCENT-I includes
+measurement and sampling error with independent draws each month;
+ERSSTv6 members vary parametric settings (QC, bias, reconstruction).
 
 ### 2.2 DCENT SST — pull 200 native DCENT-I members, extract SST global means
 
@@ -283,7 +299,7 @@ HadSST4's 200-member σ at 2024 (~0.026 °C); pre-1900 σ grows to ~0.04
 The native ensemble ends Dec 2024 but the build runs through 2025.
 For year y past the last native year y* (here y* = 2024):
 
-  σ_scale(y)        = σ_HadSST4(y) / σ_HadSST4(y*)
+  σ_scale(y)        = σ_HadSST4,total(y) / σ_HadSST4,total(y*)   (published annual total σ)
   ensemble_median*  = nanmedian(native[y*, :])
   member_m(y)       = central(y) + (native[y*, m] − ensemble_median*) × σ_scale(y)
 
@@ -291,14 +307,15 @@ where `central(y)` is the published ERSSTv6 best-estimate from aravg
 (re-baselined to 1981-2010 member-wise to match the rest of the build).
 
 Each member's 2024 deviation from the ensemble median is carried
-forward to 2025 (and rescaled by HadSST4's year-on-year σ ratio).
+forward to 2025 (and rescaled by HadSST4's published year-on-year
+total-σ ratio, 0.932 for 2025/2024; a sampled ensemble SD would add
+Monte Carlo noise of about 5%).
 This preserves per-member trajectory continuity at the boundary —
 the alternative of redrawing each member's 2025 deviation
 independently would create ~0.05–0.10 °C discontinuities at 2024→2025
 and inject spurious noise into per-member trend statistics ending in
-2025. The σ-scaling factor captures any real coverage-driven σ growth
-(e.g., the 2023–2025 drifter-fleet contraction shows up in HadSST4's
-σ ratio).
+2025. The σ-scaling factor carries HadSST4's year-on-year change in
+total uncertainty into the extrapolated year.
 
 The post-native end is therefore an *extrapolation*, not an
 observation, and we **hard-fail** if the gap between the native
@@ -396,55 +413,22 @@ subspace that the native ensemble explores. The two siblings together
 cover a broader uncertainty space than either alone, and the equal
 1/8 + 1/8 weighting reflects that complementarity.
 
-### 2.5 COBE-SST3 donor — SST3 best estimate + HadSST4-donor uncertainty (with sparse-era σ inflation)
+### 2.5 COBE-SST3 donor — SST3 best estimate + HadSST4 error model (no coverage term)
 
-The SST3-donor sibling wraps a HadSST4-shaped uncertainty envelope
-around the SST3 best-estimate central, giving COBE-family
-uncertainty coverage in the 1850–1869 sliver where SST3's native
-perturbations don't reach and a methodologically independent
-uncertainty representation (HadSST4 bias-correction parameter space)
-alongside the SST3 native sibling inside 1870–2024.
+The second COBE sibling gives COBE-family uncertainty in 1850–1869,
+where SST3's native perturbations do not reach, and an alternative
+uncertainty representation alongside the native sibling in 1870–2024.
 
-The donor recipe is analogous to NOAA Land in the LSAT methodology:
+Its 2,000 members are the SST3 best estimate (1850–2024) plus:
+- the deviation of HadSST4 bias member *k mod 200* from the HadSST4
+  bias-ensemble mean, and
+- HadSST4's uncorrelated and correlated noise (Section 2.1),
 
-- Take HadSST4's native 200-member ensemble (Section 2.1),
-  demean it (subtract the per-year ensemble mean), and rescale to
-  match a target 1σ envelope. This gives a 200-member uncertainty
-  ensemble anchored on HadSST4's structural uncertainty family.
-- Add the rescaled donor to the SST3 best-estimate central on the
-  common annual axis.
-- The resulting leaf is naturally NaN in any year where the SST3
-  central is NaN (i.e., 2025+), so the donor sibling falls out of
-  the sampler past the SST3 best-estimate end without needing an
-  explicit gap flag.
-
-**Choice of donor and rationale.** HadSST4 is the canonical in-situ
-SST reconstruction with a published structural uncertainty
-representation. Using HadSST4 as donor for COBE is methodologically
-defensible because both share an in-situ archive lineage (COBE adds
-satellite data in the modern era). COBE-SST3 ships its own analysis
-error field (`err`) alongside the gridded best estimate, but we use
-the 300-member native perturbation ensemble for SST3's primary
-uncertainty representation (Section 2.4) — the donor sibling adds
-*structural* uncertainty diversity by sampling from HadSST4's
-bias-correction parameter space rather than from SST3's own. The
-two siblings therefore represent the COBE family's uncertainty
-through two distinct families of perturbations.
-
-**Target σ for rescaling — sparse-era inflated.** The base target σ is
-HadSST4's own annual σ. To partially compensate for the (uncaptured)
-extra structural uncertainty that COBE brings from
-optimal-interpolation reconstruction in the sparse pre-satellite era,
-we **inflate the target σ by a year-dependent factor**:
-- pre-1920: 1.3× HadSST4 σ
-- 1920–1960: linearly decays from 1.3× to 1.0×
-- post-1960: 1.0× HadSST4 σ
-
-This is a deliberate compensation, not a measurement. The
-sensitivity test version with inflation factor = 1.0× throughout
-(identity rescaling) is reported alongside. Inflation is applied
-only to the SST3-donor sibling; HadSST4, ERSSTv6, DCENT, and the
-SST3 native sibling all carry their own native sparse-era spread.
+with the member-mean error removed each year so the leaf mean equals
+the SST3 best estimate. The coverage term is omitted because SST3 is an
+infilled analysis, and no extra inflation is applied: the HadSST4 error
+model already reproduces HadSST4's published total uncertainty. The
+leaf is NaN where the SST3 best estimate is NaN (2025+).
 
 ## Step 3 — Re-baseline all ensembles to 1981–2010
 
@@ -471,7 +455,7 @@ SST root (P=1)
 │   └── ERSSTv6                                         (P=1/4)
 ├── COBE family                                   (P=1/4 in 1850–2024; P=0 in 2025+)
 │   ├── COBE-SST 3 native (300 perturbations)        (P=1/8 in 1870–2024; P=0 elsewhere)
-│   └── COBE-SST 3 donor (HadSST4-wrapped central)   (P=1/8 in 1870–2024;
+│   └── COBE-SST 3 donor (HadSST4 error model)       (P=1/8 in 1870–2024;
 │                                                     P=1/4 in 1850–1869;
 │                                                     P=0 in 2025+)
 └── DYNAMICAL-CONSTRAINT family                   (P=1/4)
@@ -601,9 +585,6 @@ catalogues qualifying in each domain.
   COBE-SST3 (both siblings) at P=1/2 (split 1/3 / 1/3 / 1/3 within;
   COBE sub-split further), DCENT at P=1/2 — the most aggressive
   version, lumping all three in-situ-based products as one lineage.
-- Sparse-era σ inflation factor = 1.0× for COBE (no inflation,
-  identity rescaling) — to quantify how much the inflation
-  contributes to tail spread.
 - Frozen-offset fallback variants: AR(1) decay of the per-member
   offset across the fallback year(s), or restoring an explicit
   donor-scatter mechanism for the post-native-end year, to quantify
@@ -696,20 +677,18 @@ leaves cover the full record.
 
 ## Known limitations
 
-1. **The SST3-donor sibling's spread is HadSST4-shaped.** Within the
-   COBE branch, the SST3 native sibling carries its own 300-member
-   perturbation uncertainty (1870–2024) but the SST3 donor sibling
-   inherits HadSST4's bias-correction-parameter spread template
-   (wrapped around the SST3 best-estimate central). The donor sibling
-   contributes 12.5% of the ensemble in 1870–2024 and absorbs the full
-   25% of the COBE branch in 1850–1869 via sibling-redirect. Both
-   COBE siblings share SST3's best-estimate trajectory; only the
-   native sibling adds an SST3-internal uncertainty representation.
-2. **HadSST4 bias dimension is native; measurement / correlated /
-   coverage dimensions are layered on as Gaussian noise** with the
-   AR(1) and perfect-time-correlation approximations from the LSAT
-   methodology. This is the same Morice-style shortcut applied to all
-   our products with decomposed σ.
+1. **The SST3-donor sibling uses HadSST4's error model.** It carries
+   HadSST4's bias-member deviations and measurement noise around the
+   SST3 best estimate (Section 2.5), contributing 12.5% of the ensemble
+   in 1870–2024 and the full 25% of the COBE branch in 1850–1869 via
+   sibling-redirect.
+2. **HadSST4 measurement, sampling and coverage errors are synthesized**
+   from the published annual components. Their year-to-year persistence
+   is not published; the correlated term uses a 1-year e-folding time
+   derived from Kennedy et al. (2011) and the coverage term a fit to
+   HadSST4 coverage applied to HadISST1 (Section 2.1). The published
+   annual correlated σ assumes full within-year correlation and is an
+   upper bound.
 3. **DCENT SST marginal spread is conditioned on SST/LSAT joint
    consistency** and is plausibly ~10–30% narrower than a standalone
    SST product's uncertainty would be (same caveat as DCLSAT).
@@ -721,15 +700,15 @@ leaves cover the full record.
    members of those two ensembles and the spread is set by ~400
    distinct trajectories).
 6. **HadSST4-shape influence varies by era.** 1870–2024: ~37.5% of
-   the ensemble (25% HadSST4 leaf + 12.5% SST3-donor sibling spread).
+   the ensemble (25% HadSST4 leaf + 12.5% SST3-donor sibling).
    1850–1869: ~50% (HadSST4 leaf + SST3-donor sibling carrying the
    full COBE branch). 2025+: ~33% (HadSST4 leaf renormalised over the
    three remaining method families; COBE family absent). Down from
    ~75% in v1.
 7. **ERSSTv6 boundary year (2025) is an extrapolation, not an
    observation.** Each 2025 member inherits its 2024 deviation from
-   the 1000-member median (σ-scaled by HadSST4's year-on-year σ
-   ratio). Members maintain trajectory continuity at the boundary,
+   the 1000-member median (scaled by HadSST4's published year-on-year
+   total-σ ratio). Members maintain trajectory continuity at the boundary,
    but late-year σ growth from non-coverage sources (e.g., a sudden
    bias-correction revision specific to 2025) is not captured. Hard-
    fails if the gap to `END_YEAR` reaches 2 years.
@@ -788,6 +767,15 @@ leaves cover the full record.
 - `family_tree_ocean.png` — visual summary of the family tree.
 
 ## References
+
+- HadSST.4.2.0.0 Product User Guide, Met Office Hadley Centre,
+  https://www.metoffice.gov.uk/hadobs/hadsst4/documentation/HadSST.4.2.0.0_product_user_guide.pdf
+  — uncertainty components, coverage method, correlated-error convention.
+- Kennedy, J. J., Rayner, N. A., Smith, R. O., Parker, D. E., & Saunby, M. (2011),
+  Reassessing biases and other uncertainties in sea surface temperature
+  observations measured in situ since 1850: 1. Measurement and sampling
+  uncertainties, JGR 116, D14103, https://doi.org/10.1029/2010JD015218 — effective
+  number of independent months for correlated errors.
 
 - Thorne, P. W. *et al.* (2026), ESSD preprint 2025-825 — Section 3.2.5
   on the SST-grouped family tree.

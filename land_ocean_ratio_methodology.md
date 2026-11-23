@@ -27,9 +27,8 @@ results.
    period. Recent periods: 2016–2025 (primary) and 2011–2020 (AR6 period,
    for like-for-like comparison).
 2. **Marginal summaries**: median and 2.5/97.5 percentiles across members
-   (the same 95% convention that reproduces the assessed SST values, e.g.
-   ocean 0.92 [0.68–1.12] °C for 2016–2025, matching the assessed
-   0.92 [0.69–1.10] °C).
+   (e.g. ocean 0.90 [0.68–1.11] °C for 2016–2025; the chapter's assessed
+   ranges use 5–95%, 0.90 [0.70–1.09] °C, see SOD_TODO C3).
 3. **Ratio and difference**: the land and ocean ensembles are built
    independently from different source datasets, so members are **not**
    physically paired. The ratio (and land−ocean difference) distribution is
@@ -45,13 +44,13 @@ results.
 
 | Period | Land (°C) | Ocean (°C) | Ratio (of medians) | Ratio (MC, 2.5–97.5) | Land−ocean (°C) |
 |---|---|---|---|---|---|
-| 2016–2025 | 1.91 [1.58–2.21] | 0.92 [0.68–1.12] | **2.07** | 2.05 [1.54–2.95] | 0.97 [0.57–1.39] |
-| 2011–2020 | 1.64 [1.34–1.95] | 0.79 [0.57–0.99] | **2.07** | 2.06 [1.49–3.07] | 0.84 [0.46–1.25] |
+| 2016–2025 | 1.91 [1.58–2.21] | 0.90 [0.68–1.11] | **2.11** | 2.05 [1.55–2.93] | 0.97 [0.58–1.39] |
+| 2011–2020 | 1.64 [1.34–1.95] | 0.78 [0.57–0.98] | **2.10** | 2.06 [1.51–3.05] | 0.84 [0.47–1.24] |
 
 AR6 (2011–2020): land 1.59 [1.34–1.83], ocean 0.88 [0.68–1.01] → implied
-ratio 1.81, implied difference 0.71 °C. Both our ratio (2.07) and difference
+ratio 1.81, implied difference 0.71 °C. Both our ratio (2.10) and difference
 (0.84) exceed AR6 for the same period, driven principally by the lower
-assessed ocean warming (0.79 vs 0.88, from the updated SST products with
+assessed ocean warming (0.78 vs 0.88, from the updated SST products with
 warmer early-twentieth-century SSTs) and secondarily by slightly higher land
 warming (1.64 vs 1.59).
 

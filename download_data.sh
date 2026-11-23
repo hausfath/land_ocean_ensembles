@@ -93,6 +93,14 @@ echo "[1/4] HadSST 4.2.0.0 — global mean CSV + 200-member gridded ensemble (1.
 curl_get \
     "https://www.metoffice.gov.uk/hadobs/hadsst4/data/data/HadSST.4.2.0.0_monthly_GLOBE.csv" \
     "Ocean Data/HadSST4/HadSST.4.2.0.0_monthly_GLOBE.csv"
+curl_get \
+    "https://www.metoffice.gov.uk/hadobs/hadsst4/data/data/HadSST.4.2.0.0_annual_GLOBE.csv" \
+    "Ocean Data/HadSST4/HadSST.4.2.0.0_annual_GLOBE.csv"
+curl_get \
+    "https://www.metoffice.gov.uk/hadobs/hadsst4/data/data/HadSST.4.2.0.0_median.nc" \
+    "Ocean Data/HadSST4/HadSST.4.2.0.0_median.nc"   # 9 MB; coverage masks
+# The four zips are only needed to (re)build HadSST.4.2.0.0_global_ensemble_monthly.csv
+# with prepare_hadsst_global_ensemble.py; delete them afterwards.
 for chunk in 1-50 51-100 101-150 151-200; do
     curl_get \
         "https://www.metoffice.gov.uk/hadobs/hadsst4/data/data/HadSST.4.2.0.0_ensemble_members_${chunk}.zip" \

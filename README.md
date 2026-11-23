@@ -18,12 +18,12 @@ produce two component-domain ensembles.
 
 | Year | LSAT median | LSAT 5–95% | SST median | SST 5–95% |
 |------|------------:|----------:|----------:|---------:|
-| 1850 | −0.17 °C    | −0.50 to +0.29 | −0.03 °C | −0.50 to +0.24 |
-| 1900 | +0.32 °C    | +0.07 to +0.56 | +0.11 °C | −0.09 to +0.21 |
-| 1950 | +0.20 °C    | +0.10 to +0.30 | +0.06 °C | −0.06 to +0.16 |
-| 2000 | +1.01 °C    | +0.96 to +1.10 | +0.48 °C | +0.46 to +0.49 |
-| 2024 | +2.26 °C    | +2.15 to +2.41 | +1.13 °C | +1.06 to +1.16 |
-| 2025 | +2.09 °C    | +1.98 to +2.23 | +1.02 °C | +0.95 to +1.04 |
+| 1850 | −0.17 °C    | −0.50 to +0.29 | −0.02 °C | −0.53 to +0.23 |
+| 1900 | +0.32 °C    | +0.07 to +0.56 | +0.10 °C | −0.09 to +0.20 |
+| 1950 | +0.20 °C    | +0.10 to +0.30 | +0.05 °C | −0.07 to +0.16 |
+| 2000 | +1.01 °C    | +0.96 to +1.10 | +0.47 °C | +0.44 to +0.50 |
+| 2024 | +2.26 °C    | +2.15 to +2.41 | +1.12 °C | +1.05 to +1.16 |
+| 2025 | +2.09 °C    | +1.98 to +2.23 | +1.01 °C | +0.95 to +1.05 |
 
 *Anomalies relative to the 1850–1900 average. Percentiles are computed
 on the 1981–2010 modern baseline (where the ensembles have minimum
@@ -31,7 +31,7 @@ spread by construction) and then shifted by a constant offset so the
 median has zero mean over 1850–1900 — the "modern baseline plus
 offset" approach. This preserves the modern-era uncertainty
 representation while reporting against preindustrial. Offsets:
-land +1.02 °C, ocean +0.49 °C.*
+land +1.02 °C, ocean +0.48 °C.*
 
 ## Datasets
 
@@ -50,13 +50,13 @@ land +1.02 °C, ocean +0.49 °C.*
 
 | Dataset | Native ensemble | Time | Source |
 |---------|-----------------|------|--------|
-| HadSST 4.2.0.0 | 200 native bias members + σ noise | 1850–2026 | `metoffice.gov.uk/hadobs/hadsst4` |
+| HadSST 4.2.0.0 | 2000: 200 native bias members + annual noise from published σ components | 1850–2026 | `metoffice.gov.uk/hadobs/hadsst4` |
 | ERSSTv6 (NOAA pre-release ensemble) | 1000 native members + frozen-offset fallback at the 2025 boundary | 1850–2025 | `ncei.noaa.gov/pub/data/cmb/ersst/v5/tmp/ersstv6.ensemble/` (contact `boyin.huang@noaa.gov`) |
-| COBE-SST 3 (Ishii et al., 2025) | 300 native perturbation members (1870–2024) + HadSST4-donor sibling around SST3's best estimate (1850–2024) | 1850–2024 | `climate.mri-jma.go.jp/pub/archives/Ishii-et-al_COBE-SST3/` |
+| COBE-SST 3 (Ishii et al., 2025) | 300 native perturbation members (1870–2024) + sibling with HadSST4's error model (no coverage term) around SST3's best estimate (1850–2024) | 1850–2024 | `climate.mri-jma.go.jp/pub/archives/Ishii-et-al_COBE-SST3/` |
 | DCENT-I SST (v1.1.0.0, native `sst` field) | 200 native members (infilled) | 1850–2025 | Harvard Dataverse `doi:10.7910/DVN/ROG38Q` |
 
 Within the COBE method family, two SST3 sibling leaves (native
-perturbations and HadSST4-donor wrap) share P=1/8 each inside
+perturbations and HadSST4 error model) share P=1/8 each inside
 1870–2024; outside that window the donor sibling absorbs the branch
 in 1850–1869, and in 2025+ the COBE family contributes 0 while the
 other three families renormalise. See
@@ -97,6 +97,9 @@ land_ocean_temps/
 ├── prepare_cobe_sst3_global_mean.py  # data prep: COBE-SST3 best estimate → anomaly CSV
 ├── prepare_cobe_global_mean.py       # data prep: COBE-SST2 NetCDF → anomaly CSV (archival)
 ├── prepare_c_lsat_global_mean.py     # data prep: C-LSAT 2.1 NetCDF → anomaly CSV
+├── prepare_hadisst_5deg.py           # data prep: HadISST1 → HadSST4 5° grid (downloads, reduces, deletes)
+├── estimate_sst_coverage_persistence.py # HadSST4 coverage-error persistence from masked HadISST1
+├── sst_coverage_persistence_fit.json # its output (p, φ), read by the ocean build
 ├── prepare_era5_5deg.py              # data prep: ERA5 monthly 2 m T → CRUTEM5 5° grid
 ├── estimate_coverage_persistence.py  # CRUTEM5 coverage-error persistence from masked ERA5
 ├── coverage_persistence_fit.json     # its output (p, φ), read by the land build
@@ -155,10 +158,13 @@ python3 prepare_cobe_sst3_global_mean.py      # ~3 min
 python3 prepare_c_lsat_global_mean.py         # ~2 s
 python3 prepare_era5_5deg.py ERA5_T2M.nc ERA5_LSM.nc   # ~2 min; see below
 python3 estimate_coverage_persistence.py      # ~5 s; writes coverage_persistence_fit.json
+python3 prepare_hadisst_5deg.py               # ~1 min; downloads HadISST1 (243 MB), keeps a 20 MB 5° file
+python3 estimate_sst_coverage_persistence.py  # ~2 s; writes sst_coverage_persistence_fit.json
 ```
 
-The last two steps are needed only to re-derive the coverage-error
-persistence (`coverage_persistence_fit.json` is committed). They need
+The ERA5 and HadISST steps are needed only to re-derive the coverage-error
+persistence (`coverage_persistence_fit.json` and
+`sst_coverage_persistence_fit.json` are committed). They need
 ERA5 monthly-mean 2 m temperature (0.25°, 1940 onward, ~1.4 GB) and the
 ERA5 land-sea mask from the Copernicus Climate Data Store
 (`reanalysis-era5-single-levels-monthly-means`); the reduced 5° file is

@@ -1,0 +1,18 @@
+{
+ "raw": {
+  "p": 0.5607234666830551,
+  "phi": 0.46339156901980555
+ },
+ "detrended": {
+  "p": 0.012029770324221773,
+  "phi": 0.41354704724802405
+ },
+ "definition": "hemispheric",
+ "hadisst_window_sigma_check": "1950-2020",
+ "hadisst_years_lag": [
+  1950,
+  2020
+ ],
+ "note": "HadISST before ~1950 is a smooth reconstruction; lags use the sigma-check window",
+ "moments": "uncentred (RMS), as HadSST4"
+}

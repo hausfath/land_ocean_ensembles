@@ -28,7 +28,7 @@ def main() -> None:
         "hadsst4":         "HadSST 4.2.0.0",
         "ersstv6":         "ERSSTv6",
         "cobe_sst3":       "COBE-SST3 native (ensemble mean)",
-        "cobe_sst3_donor": "COBE-SST3 donor (HadSST4-wrapped)",
+        "cobe_sst3_donor": "COBE-SST3 + HadSST4 error model",
         "dcent_sst":       "DCENT-I SST (v1.1.0.0)",
     }
     for name, color in colors.items():

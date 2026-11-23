@@ -54,10 +54,10 @@ LAND_LEAVES = {
 }
 
 OCEAN_LEAVES = {
-    "hadsst4":         ("HadSST 4.2.0.0",       "1850–2026", "200 native members + σ noise"),
+    "hadsst4":         ("HadSST 4.2.0.0",       "1850–2026", "native bias + synthesized noise"),
     "ersstv6":         ("ERSSTv6",              "1850–2025", "1000 native members"),
     "cobe_sst3":       ("COBE-SST3 (native)",   "1870–2024", "300 native perturbation members"),
-    "cobe_sst3_donor": ("COBE-SST3 (donor)",    "1850–2024", "HadSST4-wrapped pseudo-ensemble"),
+    "cobe_sst3_donor": ("COBE-SST3 (donor)",    "1850–2024", "HadSST4 error-model pseudo-ensemble"),
     "dcent_sst":       ("DCENT-I SST v1.1.0.0", "1850–2025", "200 native members (infilled)"),
 }
 

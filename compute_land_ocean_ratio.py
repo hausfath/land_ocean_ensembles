@@ -10,7 +10,7 @@ since land and ocean errors share structural components (positive correlation
 would narrow both intervals). Quoted central ratio is the ratio of medians.
 
 Validation: the ocean warming reproduces the assessed SST values
-(0.92 [0.69 to 1.10] degC for 1850-1900 -> 2016-2025).
+(0.90 [0.70 to 1.09] degC, 5-95%, for 1850-1900 -> 2016-2025).
 
 Inputs : land_ensemble.csv, ocean_ensemble.csv (year + 10,000 member cols,
          annual anomalies 1850-2025, each member zero-mean over its baseline).

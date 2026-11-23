@@ -16,7 +16,9 @@ See `ocean_ensemble_methodology.md` for full description.
 Inputs (in `Ocean Data/`):
     HadSST4/HadSST.4.2.0.0_global_ensemble_monthly.csv      (200 native bias members,
                                                               from prepare_hadsst_global_ensemble.py)
-    HadSST4/HadSST.4.2.0.0_monthly_GLOBE.csv                (decomposed σ for noise terms)
+    HadSST4/HadSST.4.2.0.0_annual_GLOBE.csv                 (published annual σ components;
+                                                              monthly_GLOBE.csv for --method legacy)
+    ../sst_coverage_persistence_fit.json                    (estimate_sst_coverage_persistence.py)
     ERSSTv6/ERSSTv6_monthly_ensemble.csv                    (1000 native members 1850-2024,
                                                               from pull_ersstv6_members.py)
     ERSSTv6/aravg.mon.ocean.90S.90N.v6.1.0.202604.asc       (best-estimate central; used as
@@ -37,6 +39,9 @@ Outputs (in this folder):
 """
 from __future__ import annotations
 
+import argparse
+import json
+
 from pathlib import Path
 
 import numpy as np
@@ -56,7 +61,12 @@ BASELINE = (1981, 2010)
 N_FINAL = 10_000
 N_SYNTH = 200
 RHO_MONTHLY = 0.3
-RNG = np.random.default_rng(20260512)
+RNG = np.random.default_rng(20260512)   # mixture sampling (and the legacy synthesis)
+SYNTH_SEED = 20261124                   # own stream for the HadSST4-model synthesis
+N_HADSST4 = 2000                        # HadSST4 leaf: 200 bias members x 10 noise draws
+CORR_TAU = 1.0                          # yr; e-folding of the correlated (platform) term
+# coverage-error persistence corr(L) = (1-p) phi^L + p
+SST_COVERAGE_VARIANTS = {"hadisst": None, "detrended": None, "white": (0.0, 0.0), "persistent": (1.0, 0.0)}
 
 # ERSSTv6's native 1000-member ensemble (Huang et al., NCEI pre-release)
 # covers 1850-01 through 2024-12. For years beyond that we apply Option B
@@ -133,6 +143,73 @@ def load_hadsst4_ensemble() -> np.ndarray:
     bad = ~np.isfinite(bias_monthly[:, 0])
     monthly_members[bad, :] = np.nan
     return reduce_monthly_to_annual(monthly_members, nat["year"].values)
+
+
+def hadsst4_annual_components() -> pd.DataFrame:
+    """Published HadSST4 annual global components on YEARS (1σ, °C)."""
+    a = pd.read_csv(DATA / "HadSST4" / "HadSST.4.2.0.0_annual_GLOBE.csv").set_index("year").reindex(YEARS)
+    return a[["anomaly", "uncorrelated_uncertainty", "correlated_uncertainty",
+              "coverage_uncertainty", "bias_uncertainty", "total_uncertainty"]]
+
+
+def hadsst4_bias_annual() -> np.ndarray:
+    """(N_YEARS, 200) annual global means of the 200 native HadSST4 bias members."""
+    nat = pd.read_csv(DATA / "HadSST4" / "HadSST.4.2.0.0_global_ensemble_monthly.csv")
+    mem_cols = [c for c in nat.columns if c.startswith("m") and c != "month"]
+    nat = nat[(nat["year"] >= START_YEAR) & (nat["year"] <= END_YEAR)]
+    return reduce_monthly_to_annual(nat[mem_cols].values, nat["year"].values)
+
+
+def sst_coverage_params(variant: str) -> tuple[float, float]:
+    if SST_COVERAGE_VARIANTS[variant] is not None:
+        return SST_COVERAGE_VARIANTS[variant]
+    fit = json.loads((ROOT / "sst_coverage_persistence_fit.json").read_text())
+    f = fit["raw" if variant == "hadisst" else "detrended"]
+    return f["p"], f["phi"]
+
+
+def hadsst4_noise(n: int, rng: np.random.Generator, cov: tuple[float, float],
+                  corr_tau: float, corr_scale: float, with_coverage: bool = True) -> np.ndarray:
+    """Annual measurement/sampling noise from HadSST4's published ANNUAL components:
+    uncorrelated white; correlated AR(1) with e-folding corr_tau years (0 = white, the
+    HadSST4 convention); coverage with corr(L) = (1-p) phi^L + p."""
+    import lsat_synthesis as S
+    comp = hadsst4_annual_components()
+    u = np.nan_to_num(comp.uncorrelated_uncertainty.values)
+    c = np.nan_to_num(comp.correlated_uncertainty.values) * corr_scale
+    v = np.nan_to_num(comp.coverage_uncertainty.values)
+    out = u[:, None] * rng.standard_normal((N_YEARS, n))
+    phi_c = np.exp(-1.0 / corr_tau) if corr_tau > 0 else 0.0
+    out += c[:, None] * S.standard_ar1(N_YEARS, n, phi_c, rng)
+    if with_coverage:
+        out += v[:, None] * S.standard_cov_process(N_YEARS, n, cov[0], cov[1], rng)
+    return out
+
+
+def load_hadsst4_annual(cov, corr_tau, corr_scale, n=N_HADSST4) -> np.ndarray:
+    """HadSST4 leaf: native bias member (k mod 200) + independent annual noise draw."""
+    bias = hadsst4_bias_annual()
+    rng = np.random.default_rng(SYNTH_SEED)
+    noise = hadsst4_noise(n, rng, cov, corr_tau, corr_scale)
+    members = bias[:, np.arange(n) % bias.shape[1]] + noise
+    members[~np.isfinite(bias[:, 0])] = np.nan
+    return members
+
+
+def cobe_sst3_hadsst4_model(central_b: np.ndarray, cov, corr_tau, corr_scale, n=N_HADSST4) -> np.ndarray:
+    """COBE-SST3 second leaf: SST3 best estimate + HadSST4 error model without the
+    coverage term (SST3 is an infilled analysis) and without extra inflation; the
+    member-mean error is removed so the leaf mean equals the SST3 best estimate."""
+    bias = hadsst4_bias_annual()
+    bias = rebaseline_to_1981_2010(bias)
+    rng = np.random.default_rng(SYNTH_SEED + 1)
+    dev = bias[:, np.arange(n) % bias.shape[1]] - np.nanmean(bias, axis=1, keepdims=True)
+    err = dev + hadsst4_noise(n, rng, cov, corr_tau, corr_scale, with_coverage=False)
+    err = rebaseline_to_1981_2010(err)
+    err -= np.nanmean(err, axis=1, keepdims=True)
+    out = central_b[:, None] + err
+    out[~np.isfinite(central_b)] = np.nan
+    return out
 
 
 def load_dcent_sst_ensemble() -> np.ndarray:
@@ -332,9 +409,33 @@ LEAF_NAN_SIBLING = {
 
 
 # ---------- main ----------
-def main() -> None:
-    print("Loading HadSST4 (200 native bias members + AR(1)/scalar noise)...")
-    had = load_hadsst4_ensemble()
+def parse_args(argv=None):
+    ap = argparse.ArgumentParser(description="Build the SST ensemble.")
+    ap.add_argument("--method", choices=["annual", "legacy"], default="annual",
+                    help="HadSST4 noise: published annual components (default) or the pre-2026-11 recipe")
+    ap.add_argument("--coverage", choices=list(SST_COVERAGE_VARIANTS), default="hadisst")
+    ap.add_argument("--corr-tau", type=float, default=CORR_TAU,
+                    help="e-folding (yr) of the correlated term; 0 = white (HadSST4 convention)")
+    ap.add_argument("--corr-scale", type=float, default=1.0,
+                    help="scale on the published correlated sigma (1/1.5 = Kennedy et al. 2011 n_eff sensitivity)")
+    ap.add_argument("--out", type=Path, default=ROOT)
+    return ap.parse_args(argv)
+
+
+def main(argv=None) -> None:
+    args = parse_args(argv)
+    out_dir = args.out
+    out_dir.mkdir(parents=True, exist_ok=True)
+    legacy = args.method == "legacy"
+    cov = None
+    if legacy:
+        print("Loading HadSST4 (200 native bias members + AR(1)/scalar noise, legacy)...")
+        had = load_hadsst4_ensemble()
+    else:
+        cov = sst_coverage_params(args.coverage)
+        print(f"HadSST4: {N_HADSST4} members = native bias + annual noise "
+              f"(corr tau {args.corr_tau} yr x{args.corr_scale}, coverage {args.coverage} p,phi={cov})")
+        had = load_hadsst4_annual(cov, args.corr_tau, args.corr_scale)
     print(f"  shape: {had.shape}  finite years: {np.isfinite(had).all(axis=1).sum()}")
 
     print("Loading DCENT SST (200 native members)...")
@@ -375,10 +476,13 @@ def main() -> None:
     # Apply Option B frozen-offset fallback for any year past ERSSTv6's native end
     print("Extending ERSSTv6 past native end with Option B frozen-offset ...")
     had_sigma = np.nanstd(had_b, axis=1, ddof=1)
+    # 2025 fallback scale: HadSST4 published total sigma (annual method) rather than
+    # a sampled ensemble SD, which carries Monte Carlo noise
+    sigma_for_fallback = had_sigma if legacy else hadsst4_annual_components().total_uncertainty.values
     ersst_ens = extend_with_frozen_offset(
         native=ersst_b,
         central_baselined=ersst_central_b,
-        sigma_donor=had_sigma,
+        sigma_donor=sigma_for_fallback,
         label="ERSSTv6",
     )
 
@@ -388,7 +492,11 @@ def main() -> None:
     # falls out of the sampler past the SST3 best-estimate end.
     print("Building COBE-SST3-donor sibling (HadSST4 donor, sparse-era inflated) ...")
     infl = sparse_era_inflation(YEARS)
-    cobe_sst3_donor_ens = build_donor_ensemble(cobe_sst3_cent_b, had_b, had_sigma, infl)
+    if legacy:
+        cobe_sst3_donor_ens = build_donor_ensemble(cobe_sst3_cent_b, had_b, had_sigma, infl)
+    else:
+        print("  (annual method: HadSST4 error model without coverage or inflation around SST3)")
+        cobe_sst3_donor_ens = cobe_sst3_hadsst4_model(cobe_sst3_cent_b, cov, args.corr_tau, args.corr_scale)
 
     leaves = {
         "hadsst4":         had_b,
@@ -427,7 +535,7 @@ def main() -> None:
     # via member trajectories that center on it; the latter as the explicit
     # anchor of the HadSST4 donor wrap).
     diag["cobe_sst3_central"] = cobe_sst3_cent_b
-    diag.to_csv(ROOT / "ocean_ensemble_perdataset.csv", index=False, float_format="%.5f")
+    diag.to_csv(out_dir / "ocean_ensemble_perdataset.csv", index=False, float_format="%.5f")
     print(f"\nWrote ocean_ensemble_perdataset.csv")
 
     # ---------- family-tree sampling to 10000 ----------
@@ -481,7 +589,7 @@ def main() -> None:
     cols = ["year"] + [f"m{i:05d}" for i in range(1, N_FINAL + 1)]
     out = pd.DataFrame(np.column_stack([YEARS, final]), columns=cols)
     out["year"] = out["year"].astype(int)
-    out.to_csv(ROOT / "ocean_ensemble.csv", index=False, float_format="%.4f")
+    out.to_csv(out_dir / "ocean_ensemble.csv", index=False, float_format="%.4f")
 
     summary = pd.DataFrame({
         "year": YEARS,
@@ -491,7 +599,11 @@ def main() -> None:
         "p975": np.nanpercentile(final, 97.5, axis=1),
         "sd":   np.nanstd(final, axis=1, ddof=1),
     })
-    summary.to_csv(ROOT / "ocean_ensemble_summary.csv", index=False, float_format="%.4f")
+    summary.to_csv(out_dir / "ocean_ensemble_summary.csv", index=False, float_format="%.4f")
+    (out_dir / "build_config_ocean.json").write_text(json.dumps({
+        "method": args.method, "coverage": None if legacy else args.coverage, "coverage_p_phi": cov,
+        "corr_tau": None if legacy else args.corr_tau, "corr_scale": None if legacy else args.corr_scale,
+        "n_hadsst4": None if legacy else N_HADSST4}, indent=1))
     print(f"Saved ocean_ensemble.csv ({out.shape}) and ocean_ensemble_summary.csv")
 
     leaf_counts = pd.DataFrame({"leaf": leaf_names})

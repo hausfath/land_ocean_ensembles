@@ -1,0 +1,11 @@
+{
+ "method": "annual",
+ "coverage": "hadisst",
+ "coverage_p_phi": [
+  0.5607234666830551,
+  0.46339156901980555
+ ],
+ "corr_tau": 1.0,
+ "corr_scale": 1.0,
+ "n_hadsst4": 2000
+}
