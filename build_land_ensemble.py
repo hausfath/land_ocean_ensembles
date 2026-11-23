@@ -8,8 +8,12 @@ See `land_ensemble_methodology.md` for full description.
 
 Inputs (in `Land Data/`):
     Berkeley Earth Highres/Land_TAVG_ensemble.txt          (10-member monthly)
-    CRUTEM5/CRUTEM.5.1.0.0.component_series.global.monthly.csv
-    GloSATLAT/GloSATLAT-1-0-0-0_component-series_global_monthly.nc
+    CRUTEM5/CRUTEM.5.2.0.0.component_series.global.annual.csv   (annual σ components)
+    GloSATLAT/GloSATLAT-1-0-0-0_component-series_global_annual.nc
+    (monthly component files: --method legacy only)
+    ../coverage_persistence_fit.json                       (estimate_coverage_persistence.py)
+CRU-lineage synthesis: lsat_synthesis.py. NOAA Land and C-LSAT 2.1 get CRUTEM5's
+error model around their own best estimates.
     DCLSAT/DCLSAT_I_monthly_ensemble.csv                   (200-member monthly,
                                                             from pull_dcent_lsat_members.py)
     NOAA Land/aravg.mon.land.90S.90N.v6.1.0.202604.asc
@@ -24,6 +28,8 @@ Outputs (in the project root, alongside this script):
 """
 from __future__ import annotations
 
+import argparse
+import json
 from pathlib import Path
 
 import numpy as np
@@ -44,7 +50,18 @@ BASELINE = (1981, 2010)
 N_FINAL = 10_000
 N_SYNTH = 200                           # per-dataset synthesized members
 RHO_MONTHLY = 0.3                       # AR(1) coefficient for uncorrelated term
-RNG = np.random.default_rng(20260512)
+RNG = np.random.default_rng(20260512)   # mixture sampling (and the legacy synthesis)
+SYNTH_SEED = 20261123                   # own stream for the CRU-lineage synthesis
+CRU_VERSION = "5.2.0.0"
+SMOOTH_YEARS = 21                       # running window for the donor scale factor
+# coverage-error persistence variants: corr(L) = (1-p) phi^L + p
+COVERAGE_VARIANTS = {
+    "era5":       None,                 # fitted (raw) by estimate_coverage_persistence.py
+    "detrended":  None,                 # fitted to detrended errors
+    "white":      (0.0, 0.0),
+    "ar1_4yr":    (0.0, float(np.exp(-1 / 4))),
+    "persistent": (1.0, 0.0),
+}
 
 
 # ---------- helpers ----------
@@ -113,10 +130,10 @@ def load_berkeley_earth() -> np.ndarray:
     return annual
 
 
-def load_crutem5_components() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def load_crutem5_components(version: str = "5.1.0.0") -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Load CRUTEM5 monthly anomaly + four uncertainty components on the 1850-2025
     monthly axis. Returns (years_idx, anomaly, u_unc, u_corr, u_cov, bias_sigma)."""
-    df = pd.read_csv(DATA / "CRUTEM5" / "CRUTEM.5.1.0.0.component_series.global.monthly.csv")
+    df = pd.read_csv(DATA / "CRUTEM5" / f"CRUTEM.{version}.component_series.global.monthly.csv")
     df["Time"] = pd.to_datetime(df["Time"])
     df["year"] = df["Time"].dt.year
     df["month"] = df["Time"].dt.month
@@ -204,7 +221,19 @@ def load_dclsat_ensemble() -> np.ndarray:
     return reduce_monthly_to_annual(monthly, df["year"].values)
 
 
-def load_noaa_land(donor_ensemble: np.ndarray, target_sigma: np.ndarray, rng: np.random.Generator) -> np.ndarray:
+def donor_rescale(target_sigma: np.ndarray, donor_sigma: np.ndarray, smooth: int = 0) -> np.ndarray:
+    """Per-year factor that scales the donor's member deviations to the target σ.
+    smooth > 1: centred running mean (in log space) over `smooth` years, so the
+    donor's year-to-year shape is not distorted by year-specific factors."""
+    r = np.where(donor_sigma > 0, target_sigma / donor_sigma, np.nan)
+    if smooth and smooth > 1:
+        lr = pd.Series(np.log(r)).rolling(smooth, center=True, min_periods=smooth // 2 + 1).mean()
+        r = np.exp(lr.values)
+    return np.nan_to_num(r, nan=0.0)
+
+
+def load_noaa_land(donor_ensemble: np.ndarray, target_sigma: np.ndarray, rng: np.random.Generator,
+                   smooth: int = 0) -> np.ndarray:
     """NOAA Land best estimate + donor-imputed uncertainty.
     donor_ensemble: (N_YEARS, n_donor) annual, already baselined.
     target_sigma: (N_YEARS,) target annual SD time series (from GloSATLAT, extended).
@@ -227,12 +256,13 @@ def load_noaa_land(donor_ensemble: np.ndarray, target_sigma: np.ndarray, rng: np
     # demean donor at each year and rescale to target_sigma / donor's own SD
     donor_demeaned = donor_ensemble - np.nanmean(donor_ensemble, axis=1, keepdims=True)
     donor_sigma = np.nanstd(donor_ensemble, axis=1, ddof=1)
-    rescale = np.where(donor_sigma > 0, target_sigma / donor_sigma, 0.0)[:, None]
+    rescale = donor_rescale(target_sigma, donor_sigma, smooth)[:, None]
     donor_scaled = donor_demeaned * rescale
     return annual_central[:, None] + donor_scaled
 
 
-def load_c_lsat(donor_ensemble: np.ndarray, target_sigma: np.ndarray, rng: np.random.Generator) -> np.ndarray:
+def load_c_lsat(donor_ensemble: np.ndarray, target_sigma: np.ndarray, rng: np.random.Generator,
+                smooth: int = 0) -> np.ndarray:
     """C-LSAT 2.1 (Sun et al. / Li, Sun Yat-sen University; CMA-homogenization
     lineage) best estimate + DCLSAT-donor-imputed uncertainty.
 
@@ -248,7 +278,7 @@ def load_c_lsat(donor_ensemble: np.ndarray, target_sigma: np.ndarray, rng: np.ra
     annual_central = reduce_monthly_to_annual(df["anomaly"].values[:, None], df["year"].values)[:, 0]
     donor_demeaned = donor_ensemble - np.nanmean(donor_ensemble, axis=1, keepdims=True)
     donor_sigma = np.nanstd(donor_ensemble, axis=1, ddof=1)
-    rescale = np.where(donor_sigma > 0, target_sigma / donor_sigma, 0.0)[:, None]
+    rescale = donor_rescale(target_sigma, donor_sigma, smooth)[:, None]
     donor_scaled = donor_demeaned * rescale
     return annual_central[:, None] + donor_scaled
 
@@ -300,20 +330,106 @@ def leaf_probs_for_year(year: int) -> dict[str, float]:
 
 
 # ---------- main ----------
-def main() -> None:
+def coverage_params(variant: str) -> tuple[float, float]:
+    if COVERAGE_VARIANTS[variant] is not None:
+        return COVERAGE_VARIANTS[variant]
+    fit = json.loads((ROOT / "coverage_persistence_fit.json").read_text())
+    f = fit["raw" if variant == "era5" else "detrended"]
+    return f["p"], f["phi"]
+
+
+def cru_lineage_annual(cov_variant: str, recentre: bool, n: int = N_SYNTH):
+    """CRUTEM5 and GloSATLAT members from their published ANNUAL components
+    (lsat_synthesis.py). Both use the same seed on the same 1850-2025 axis, so
+    member k of each leaf carries the same standardised draws: a mixture member
+    that switches from GloSATLAT to CRUTEM5 after 2021 keeps its error draws."""
+    import lsat_synthesis as S
+    p, phi = coverage_params(cov_variant)
+    out = {}
+    for name, comp in (("crutem5", S.load_crutem5_annual(DATA, CRU_VERSION)),
+                       ("glosatlat", S.load_glosatlat_annual(DATA))):
+        comp = comp.reindex(YEARS)
+        out[name] = S.synthesize(comp, n, np.random.default_rng(SYNTH_SEED),
+                                 cov_p=p, cov_phi=phi, recentre=recentre)
+    return out["crutem5"], out["glosatlat"], (p, phi)
+
+
+def donor_central(name: str) -> np.ndarray:
+    """Annual best estimate (native baseline) of NOAA Land or C-LSAT 2.1."""
+    if name == "noaa_land":
+        path = DATA / "NOAA Land" / "aravg.mon.land.90S.90N.v6.1.0.202604.asc"
+        rows = [tuple(map(float, ln.split()[:3])) for ln in open(path) if ln.split()]
+        df = pd.DataFrame(rows, columns=["year", "month", "anom"])
+        col = "anom"
+    else:
+        df = pd.read_csv(DATA / "C-LSAT" / "C-LSAT2.1_global_monthly.csv")
+        col = "anomaly"
+    df = df[(df["year"] >= START_YEAR) & (df["year"] <= END_YEAR)]
+    return reduce_monthly_to_annual(df[col].values[:, None], df["year"].values.astype(int))[:, 0]
+
+
+def cru_model_leaves(cov_variant: str):
+    """NOAA Land and C-LSAT 2.1 (no published uncertainty components): their own best
+    estimate plus CRUTEM5's annual error model (lsat_synthesis.py), each with an
+    independent seed and recentred so the leaf mean equals the product's best estimate
+    (CRUTEM5's one-sided urbanisation term adds spread, not an offset, to products
+    with their own urban/homogenisation treatment)."""
+    import lsat_synthesis as S
+    p, phi = coverage_params(cov_variant)
+    cru = S.load_crutem5_annual(DATA, CRU_VERSION)
+    out = {}
+    for k, name in enumerate(("noaa_land", "c_lsat"), start=1):
+        comp = S.with_central(cru, pd.Series(donor_central(name), index=YEARS))
+        out[name] = S.synthesize(comp, N_SYNTH, np.random.default_rng(SYNTH_SEED + k),
+                                 cov_p=p, cov_phi=phi, recentre=True)
+    return out
+
+
+def parse_args(argv=None):
+    ap = argparse.ArgumentParser(description="Build the LSAT ensemble.")
+    ap.add_argument("--method", choices=["annual", "legacy"], default="annual",
+                    help="CRU-lineage synthesis: annual components (default) or the "
+                         "pre-2026-11 monthly whole-record-scalar recipe")
+    ap.add_argument("--cru-version", default=CRU_VERSION, help="CRUTEM5 version for --method legacy")
+    ap.add_argument("--coverage", choices=list(COVERAGE_VARIANTS), default="era5")
+    ap.add_argument("--recentre", action="store_true",
+                    help="subtract the member-mean error so the leaf mean equals the best estimate")
+    ap.add_argument("--donor", choices=["cru_model", "dclsat"], default="cru_model",
+                    help="NOAA Land / C-LSAT uncertainty: CRUTEM5 error model (default) or "
+                         "DCLSAT member shapes rescaled to the CRU-lineage sigma")
+    ap.add_argument("--smooth", type=int, default=SMOOTH_YEARS,
+                    help="running window (yr) for the donor scale factor; 0 = per-year (legacy)")
+    ap.add_argument("--out", type=Path, default=ROOT, help="output directory")
+    return ap.parse_args(argv)
+
+
+def build_leaves(args):
+    """Per-dataset ensembles, each rebaselined to 1981-2010.
+    Returns (leaves dict, donor target sigma, coverage (p, phi) or None, donor smoothing)."""
+    legacy = args.method == "legacy"
+
     print("Loading Berkeley Earth (native 10 members)...")
     be = load_berkeley_earth()
     print(f"  shape: {be.shape}  finite years: {np.isfinite(be).all(axis=1).sum()}")
 
-    print("Loading + synthesizing CRUTEM5 (200 synthetic members)...")
-    cru_in = load_crutem5_components()
-    cru = synthesize_component_ensemble(*cru_in, N_SYNTH, RNG)
-    print(f"  shape: {cru.shape}  finite years: {np.isfinite(cru).all(axis=1).sum()}")
-
-    print("Loading + synthesizing GloSATLAT (200 synthetic members)...")
-    glo_in = load_glosat_components()
-    glo = synthesize_component_ensemble(*glo_in, N_SYNTH, RNG)
-    print(f"  shape: {glo.shape}  finite years: {np.isfinite(glo).all(axis=1).sum()}")
+    if legacy:
+        print(f"Legacy synthesis: CRUTEM {args.cru_version} + GloSATLAT, monthly components...")
+        cru_in = load_crutem5_components(args.cru_version)
+        cru = synthesize_component_ensemble(*cru_in, N_SYNTH, RNG)
+        glo_in = load_glosat_components()
+        glo = synthesize_component_ensemble(*glo_in, N_SYNTH, RNG)
+        cov_pp = None
+    else:
+        # The legacy synthesis drew from RNG; consume the same number of draws so the
+        # mixture's leaf/member assignment below is identical to the legacy build.
+        n_months_cru = len(load_crutem5_components(args.cru_version)[0])
+        n_months_glo = len(load_glosat_components()[0])
+        RNG.standard_normal((n_months_cru + n_months_glo + 6) * N_SYNTH)
+        print(f"Annual synthesis: CRUTEM {CRU_VERSION} + GloSATLAT, coverage={args.coverage}, "
+              f"recentre={args.recentre}...")
+        cru, glo, cov_pp = cru_lineage_annual(args.coverage, args.recentre)
+    print(f"  CRUTEM5 {cru.shape} finite years {np.isfinite(cru).all(axis=1).sum()}; "
+          f"GloSATLAT finite years {np.isfinite(glo).all(axis=1).sum()}")
 
     print("Loading DCLSAT (200 native members)...")
     dcl = load_dclsat_ensemble()
@@ -329,13 +445,18 @@ def main() -> None:
     # Two donor-imputed LSAT leaves (NOAA Land and C-LSAT 2.1) draw from
     # DISJOINT slices of DCLSAT's 200-member donor so they don't share per-
     # member trajectory shape. NOAA gets members 1-100; C-LSAT gets 101-200.
-    print("Building NOAA Land donor ensemble (DCLSAT members 1-100, rescaled to GloSAT σ)...")
-    noaa = load_noaa_land(dcl_baselined_for_donor[:, :100], tgt_sigma, RNG)
-    print(f"  shape: {noaa.shape}  finite years: {np.isfinite(noaa).all(axis=1).sum()}")
-
-    print("Building C-LSAT 2.1 donor ensemble (DCLSAT members 101-200, rescaled to GloSAT σ)...")
-    c_lsat = load_c_lsat(dcl_baselined_for_donor[:, 100:], tgt_sigma, RNG)
-    print(f"  shape: {c_lsat.shape}  finite years: {np.isfinite(c_lsat).all(axis=1).sum()}")
+    print("Building NOAA Land and C-LSAT 2.1 leaves...")
+    if legacy or args.donor == "dclsat":
+        smooth = 0 if legacy else args.smooth
+        noaa = load_noaa_land(dcl_baselined_for_donor[:, :100], tgt_sigma, RNG, smooth)
+        c_lsat = load_c_lsat(dcl_baselined_for_donor[:, 100:], tgt_sigma, RNG, smooth)
+    else:
+        print("NOAA Land / C-LSAT 2.1: own best estimate + CRUTEM5 annual error model...")
+        smooth = None
+        d = cru_model_leaves(args.coverage)
+        noaa, c_lsat = d["noaa_land"], d["c_lsat"]
+    print(f"  NOAA Land finite years {np.isfinite(noaa).all(axis=1).sum()}; "
+          f"C-LSAT finite years {np.isfinite(c_lsat).all(axis=1).sum()}")
 
     print("Re-baselining all per-dataset ensembles to 1981-2010...")
     be_b = rebaseline_to_1981_2010(be)
@@ -353,6 +474,15 @@ def main() -> None:
         "noaa_land": noaa_b,
         "c_lsat": c_lsat_b,
     }
+    return leaves, tgt_sigma, cov_pp, smooth
+
+
+def main(argv=None) -> None:
+    args = parse_args(argv)
+    out_dir = args.out
+    out_dir.mkdir(parents=True, exist_ok=True)
+    legacy = args.method == "legacy"
+    leaves, tgt_sigma, cov_pp, smooth = build_leaves(args)
 
     # Sanity print: ensemble-mean per dataset for the latest year
     print("\nSanity: ensemble mean (best estimate) for 2024 (re-baselined to 1981-2010):")
@@ -365,7 +495,8 @@ def main() -> None:
     for name, ens in leaves.items():
         diag[f"{name}_mean"] = np.nanmean(ens, axis=1)
         diag[f"{name}_sd"]   = np.nanstd(ens, axis=1, ddof=1)
-    diag.to_csv(ROOT / "land_ensemble_perdataset.csv", index=False, float_format="%.5f")
+    diag["donor_target_sd"] = tgt_sigma
+    diag.to_csv(out_dir / "land_ensemble_perdataset.csv", index=False, float_format="%.5f")
     print(f"\nWrote land_ensemble_perdataset.csv")
 
     # ---------- family-tree sampling to 10000 ----------
@@ -421,7 +552,8 @@ def main() -> None:
             # year-dependent vetoes: GloSAT after 2021
             if (pl == glosat_idx and yr > 2021):
                 pl = crutem_idx
-                mi = fallback_member_idx[m]
+                # annual method: same member index (shared draws, see cru_lineage_annual)
+                mi = fallback_member_idx[m] if legacy else mi
             # NaN veto: if the chosen (leaf, member) is NaN, resample leaf
             if not np.isfinite(leaves[leaf_names[pl]][iy, mi]):
                 pl = RNG.choice(finite_leaves, p=renorm_p)
@@ -439,7 +571,7 @@ def main() -> None:
     cols = ["year"] + [f"m{i:05d}" for i in range(1, N_FINAL + 1)]
     out = pd.DataFrame(np.column_stack([YEARS, final]), columns=cols)
     out["year"] = out["year"].astype(int)
-    out.to_csv(ROOT / "land_ensemble.csv", index=False, float_format="%.4f")
+    out.to_csv(out_dir / "land_ensemble.csv", index=False, float_format="%.4f")
 
     summary = pd.DataFrame({
         "year": YEARS,
@@ -450,7 +582,7 @@ def main() -> None:
         "p975": np.nanpercentile(final, 97.5, axis=1),
         "sd":   np.nanstd(final, axis=1, ddof=1),
     })
-    summary.to_csv(ROOT / "land_ensemble_summary.csv", index=False, float_format="%.4f")
+    summary.to_csv(out_dir / "land_ensemble_summary.csv", index=False, float_format="%.4f")
     print(f"Saved land_ensemble.csv ({out.shape}) and land_ensemble_summary.csv")
 
     # leaf-contribution summary
@@ -465,6 +597,12 @@ def main() -> None:
     ]
     print("\nLeaf shares of the final 10,000 in 1900 and 2024 (sanity vs. tree weights):")
     print(leaf_counts.to_string(index=False))
+    (out_dir / "build_config.json").write_text(json.dumps({
+        "method": args.method, "cru_version": CRU_VERSION if not legacy else args.cru_version,
+        "coverage": None if legacy else args.coverage, "coverage_p_phi": cov_pp,
+        "recentre": args.recentre, "donor": None if legacy else args.donor,
+        "donor_smooth_years": smooth,
+    }, indent=1))
 
 
 if __name__ == "__main__":

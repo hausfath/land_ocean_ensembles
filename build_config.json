@@ -1,0 +1,12 @@
+{
+ "method": "annual",
+ "cru_version": "5.2.0.0",
+ "coverage": "era5",
+ "coverage_p_phi": [
+  0.12317866141062796,
+  0.18593995641310204
+ ],
+ "recentre": false,
+ "donor": "cru_model",
+ "donor_smooth_years": null
+}

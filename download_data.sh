@@ -30,21 +30,22 @@ curl_get \
     "https://storage.googleapis.com/berkeley-earth-temperature-hr/global/Land_TAVG_ensemble.txt" \
     "Land Data/Berkeley Earth Highres/Land_TAVG_ensemble.txt"
 
-echo "[2/5] CRUTEM 5.1.0.0 — summary + component series, monthly global"
-curl_get \
-    "https://www.metoffice.gov.uk/hadobs/crutem5/data/CRUTEM.5.1.0.0/diagnostics/CRUTEM.5.1.0.0.summary_series.global.monthly.csv" \
-    "Land Data/CRUTEM5/CRUTEM.5.1.0.0.summary_series.global.monthly.csv"
-curl_get \
-    "https://www.metoffice.gov.uk/hadobs/crutem5/data/CRUTEM.5.1.0.0/diagnostics/CRUTEM.5.1.0.0.component_series.global.monthly.csv" \
-    "Land Data/CRUTEM5/CRUTEM.5.1.0.0.component_series.global.monthly.csv"
+echo "[2/5] CRUTEM 5.2.0.0 — component + summary series (global annual/monthly, hemispheric annual) + gridded anomalies (coverage masks)"
+CRU=https://www.metoffice.gov.uk/hadobs/crutem5/data/CRUTEM.5.2.0.0
+for f in component_series.global.annual.csv component_series.global.monthly.csv \
+         summary_series.global.annual.csv summary_series.global.monthly.csv \
+         component_series.northern_hemisphere.annual.csv component_series.southern_hemisphere.annual.csv; do
+    curl_get "$CRU/diagnostics/CRUTEM.5.2.0.0.$f" "Land Data/CRUTEM5/CRUTEM.5.2.0.0.$f"
+done
+curl_get "$CRU/grids/CRUTEM.5.2.0.0.anomalies.nc" "Land Data/CRUTEM5/CRUTEM.5.2.0.0.anomalies.nc"   # 13.5 MB
 
-echo "[3/5] GloSATLAT v1.0.0.0 — summary + component series, monthly global"
-curl_get \
-    "https://dap.ceda.ac.uk/badc/deposited2025/GloSAT/GloSATLAT-1-0-0-0/diagnostics/summary-series/GloSATLAT-1-0-0-0_summary-series_global_monthly.nc" \
-    "Land Data/GloSATLAT/GloSATLAT-1-0-0-0_summary-series_global_monthly.nc"
-curl_get \
-    "https://dap.ceda.ac.uk/badc/deposited2025/GloSAT/GloSATLAT-1-0-0-0/diagnostics/component-series/GloSATLAT-1-0-0-0_component-series_global_monthly.nc" \
-    "Land Data/GloSATLAT/GloSATLAT-1-0-0-0_component-series_global_monthly.nc"
+echo "[3/5] GloSATLAT v1.0.0.0 — summary + component series, global annual + monthly"
+GLO=https://dap.ceda.ac.uk/badc/deposited2025/GloSAT/GloSATLAT-1-0-0-0/diagnostics
+for k in summary-series component-series; do
+    for r in annual monthly; do
+        curl_get "$GLO/$k/GloSATLAT-1-0-0-0_${k}_global_${r}.nc" "Land Data/GloSATLAT/GloSATLAT-1-0-0-0_${k}_global_${r}.nc"
+    done
+done
 
 echo "[4/6] DCENT-I — diagnostics + members (pulled iteratively by pull_dcent_i_members.py)"
 # DCENT-I v1.1.0.0 (Chan et al. 2026, GDJ; doi:10.7910/DVN/ROG38Q,

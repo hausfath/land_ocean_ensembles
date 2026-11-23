@@ -18,12 +18,12 @@ produce two component-domain ensembles.
 
 | Year | LSAT median | LSAT 5–95% | SST median | SST 5–95% |
 |------|------------:|----------:|----------:|---------:|
-| 1850 | −0.18 °C    | −0.69 to +0.42 | −0.03 °C | −0.50 to +0.24 |
+| 1850 | −0.17 °C    | −0.50 to +0.29 | −0.03 °C | −0.50 to +0.24 |
 | 1900 | +0.32 °C    | +0.07 to +0.56 | +0.11 °C | −0.09 to +0.21 |
-| 1950 | +0.20 °C    | +0.11 to +0.27 | +0.06 °C | −0.06 to +0.16 |
-| 2000 | +1.02 °C    | +0.99 to +1.06 | +0.48 °C | +0.46 to +0.49 |
-| 2024 | +2.26 °C    | +2.15 to +2.39 | +1.13 °C | +1.06 to +1.16 |
-| 2025 | +2.09 °C    | +1.95 to +2.23 | +1.02 °C | +0.95 to +1.04 |
+| 1950 | +0.20 °C    | +0.10 to +0.30 | +0.06 °C | −0.06 to +0.16 |
+| 2000 | +1.01 °C    | +0.96 to +1.10 | +0.48 °C | +0.46 to +0.49 |
+| 2024 | +2.26 °C    | +2.15 to +2.41 | +1.13 °C | +1.06 to +1.16 |
+| 2025 | +2.09 °C    | +1.98 to +2.23 | +1.02 °C | +0.95 to +1.04 |
 
 *Anomalies relative to the 1850–1900 average. Percentiles are computed
 on the 1981–2010 modern baseline (where the ensembles have minimum
@@ -40,11 +40,11 @@ land +1.02 °C, ocean +0.49 °C.*
 | Dataset | Native ensemble | Time | Source |
 |---------|-----------------|------|--------|
 | Berkeley Earth High-Res Land | 10 native members | 1750–2026 | `berkeleyearth.org` |
-| CRUTEM 5.1.0.0 | No (200 synth from σ) | 1850–2026 | `metoffice.gov.uk/hadobs/crutem5` |
-| GloSATLAT 1.0.0.0 | No (200 synth from σ) | 1781–2021 | CEDA (`catalogue.ceda.ac.uk`) |
+| CRUTEM 5.2.0.0 | No (200 synth from published annual σ components) | 1857–2026 | `metoffice.gov.uk/hadobs/crutem5` |
+| GloSATLAT 1.0.0.0 | No (200 synth from published annual σ components) | 1781–2021 | CEDA (`catalogue.ceda.ac.uk`) |
 | DCLSAT-I (DCENT-I v1.1.0.0, native `lsat` field) | 200 native members (infilled) | 1850–2025 | Harvard Dataverse `doi:10.7910/DVN/ROG38Q` |
-| NOAA Land v6.1.0 | No (DCLSAT donor, m 1–100) | 1850–2026 | `ncei.noaa.gov/.../noaa-global-surface-temperature/v6.1` |
-| C-LSAT 2.1 (CMA homogenization) | No (DCLSAT donor, m 101–200) | 1850–2025 | `gwpu.net` / [figshare:28255394](https://doi.org/10.6084/m9.figshare.28255394) |
+| NOAA Land v6.1.0 | No (200 synth: own best estimate + CRUTEM5 error model) | 1850–2026 | `ncei.noaa.gov/.../noaa-global-surface-temperature/v6.1` |
+| C-LSAT 2.1 (CMA homogenization) | No (200 synth: own best estimate + CRUTEM5 error model) | 1850–2025 | `gwpu.net` / [figshare:28255394](https://doi.org/10.6084/m9.figshare.28255394) |
 
 ### SST (4 method families; 5 leaves)
 
@@ -97,6 +97,10 @@ land_ocean_temps/
 ├── prepare_cobe_sst3_global_mean.py  # data prep: COBE-SST3 best estimate → anomaly CSV
 ├── prepare_cobe_global_mean.py       # data prep: COBE-SST2 NetCDF → anomaly CSV (archival)
 ├── prepare_c_lsat_global_mean.py     # data prep: C-LSAT 2.1 NetCDF → anomaly CSV
+├── prepare_era5_5deg.py              # data prep: ERA5 monthly 2 m T → CRUTEM5 5° grid
+├── estimate_coverage_persistence.py  # CRUTEM5 coverage-error persistence from masked ERA5
+├── coverage_persistence_fit.json     # its output (p, φ), read by the land build
+├── lsat_synthesis.py                 # annual pseudo-ensembles from published σ components
 ├── dcent_i_member_fileids.json       # Harvard Dataverse manifest for DCENT-I v1.1.0.0
 │
 ├── build_land_ensemble.py            # core: 10,000-member LSAT builder
@@ -149,7 +153,16 @@ python3 pull_cobe_sst3_members.py             # ~3-15 hr, ~155 MB transient (per
 python3 prepare_hadsst_global_ensemble.py     # ~30 s
 python3 prepare_cobe_sst3_global_mean.py      # ~3 min
 python3 prepare_c_lsat_global_mean.py         # ~2 s
+python3 prepare_era5_5deg.py ERA5_T2M.nc ERA5_LSM.nc   # ~2 min; see below
+python3 estimate_coverage_persistence.py      # ~5 s; writes coverage_persistence_fit.json
 ```
+
+The last two steps are needed only to re-derive the coverage-error
+persistence (`coverage_persistence_fit.json` is committed). They need
+ERA5 monthly-mean 2 m temperature (0.25°, 1940 onward, ~1.4 GB) and the
+ERA5 land-sea mask from the Copernicus Climate Data Store
+(`reanalysis-era5-single-levels-monthly-means`); the reduced 5° file is
+about 25 MB.
 
 These read from `Land Data/` and `Ocean Data/` and write derived CSV
 files alongside their inputs.
@@ -160,6 +173,10 @@ files alongside their inputs.
 python3 build_land_ensemble.py
 python3 build_ocean_ensemble.py
 ```
+
+`build_land_ensemble.py --help` lists the sensitivity options (coverage
+persistence, recentred CRU-lineage bias, and the pre-2026-11 legacy
+synthesis via `--method legacy`).
 
 Writes `land_ensemble.csv`, `ocean_ensemble.csv`, summary CSVs, and
 per-dataset diagnostics.
