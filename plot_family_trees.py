@@ -46,11 +46,11 @@ OCEAN_FAMILIES = ["HadSST", "ERSST", "COBE", "Dynamical constraint"]
 
 LAND_LEAVES = {
     "berkeley_earth": ("Berkeley Earth Hi-res",       "1750–2026", "10 native members"),
-    "noaa_land":      ("NOAAGlobalTemp Land v6.1",    "1850–2026", "DCLSAT pseudo-ensemble (m 1–100)"),
-    "crutem5":        ("CRUTEM 5.1.0.0",              "1850–2026", "200 σ-synthesized members"),
+    "noaa_land":      ("NOAAGlobalTemp Land v6.1",    "1850–2026", "CRUTEM5-σ pseudo-ensemble"),
+    "crutem5":        ("CRUTEM 5.2.0.0",              "1857–2026", "200 σ-synthesized members"),
     "glosatlat":      ("GloSATLAT 1.0.0.0",           "1781–2021", "200 σ-synthesized members"),
     "dclsat":         ("DCLSAT-I (DCENT-I v1.1.0.0)", "1850–2025", "200 native members (infilled)"),
-    "c_lsat":         ("C-LSAT 2.1 (CMA)",            "1850–2025", "DCLSAT pseudo-ensemble (m 101–200)"),
+    "c_lsat":         ("C-LSAT 2.1 (CMA)",            "1850–2025", "CRUTEM5-σ pseudo-ensemble"),
 }
 
 OCEAN_LEAVES = {
