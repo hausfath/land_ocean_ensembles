@@ -8,5 +8,24 @@
  ],
  "recentre": false,
  "donor": "cru_model",
- "donor_smooth_years": null
+ "donor_smooth_years": null,
+ "reanalysis": {
+  "leaves": [
+   "era5",
+   "jra3q"
+  ],
+  "weight": 0.16666666666666666,
+  "splice_year": 1996,
+  "align": [
+   1981,
+   2010
+  ],
+  "jra_field": "an",
+  "domain": "all",
+  "mask": "none",
+  "struct_sigma": 0.0,
+  "struct_tau": 30.0,
+  "seed": 20261125,
+  "n_replaced": 1667
+ }
 }

@@ -1,6 +1,7 @@
 """Reduce ERA5 monthly 2 m temperature (0.25°) to CRUTEM5's 5°x5° grid.
 
-Used only to estimate the year-to-year persistence of CRUTEM5's coverage error
+Provides the ERA5 land leaf of the LSAT ensemble (reanalysis_land.py) and the
+input for the year-to-year persistence of CRUTEM5's coverage error
 (estimate_coverage_persistence.py). For every 5° box and month it writes
 
   t2m_land : cos(lat) x land-fraction weighted mean over the box (land points only)

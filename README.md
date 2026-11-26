@@ -2,8 +2,8 @@
 
 10,000-member annual ensembles of **global land surface air temperature
 (LSAT)** and **global sea surface temperature (SST)**, 1850–2025, built
-from six LSAT products and four SST products via a Thorne et al. (2026)
-style family-tree weighting. Each component product contributes either a
+from six LSAT products (plus the ERA5 and JRA-3Q reanalyses from 1996) and
+four SST products via a Thorne et al. (2026) style family-tree weighting. Each component product contributes either a
 native ensemble or a σ-synthesized / donor-imputed pseudo-ensemble; the
 final 10,000 draws sample across products by equal-weight method
 families.
@@ -21,9 +21,9 @@ produce two component-domain ensembles.
 | 1850 | −0.17 °C    | −0.50 to +0.29 | −0.02 °C | −0.53 to +0.23 |
 | 1900 | +0.32 °C    | +0.07 to +0.56 | +0.10 °C | −0.09 to +0.20 |
 | 1950 | +0.20 °C    | +0.10 to +0.30 | +0.05 °C | −0.07 to +0.16 |
-| 2000 | +1.01 °C    | +0.96 to +1.10 | +0.47 °C | +0.44 to +0.50 |
-| 2024 | +2.26 °C    | +2.15 to +2.41 | +1.12 °C | +1.05 to +1.16 |
-| 2025 | +2.09 °C    | +1.98 to +2.23 | +1.01 °C | +0.95 to +1.05 |
+| 2000 | +1.01 °C    | +0.93 to +1.09 | +0.47 °C | +0.44 to +0.50 |
+| 2024 | +2.27 °C    | +2.15 to +2.40 | +1.12 °C | +1.05 to +1.16 |
+| 2025 | +2.12 °C    | +1.98 to +2.22 | +1.01 °C | +0.95 to +1.05 |
 
 *Anomalies relative to the 1850–1900 average. Percentiles are computed
 on the 1981–2010 modern baseline (where the ensembles have minimum
@@ -35,7 +35,7 @@ land +1.02 °C, ocean +0.48 °C.*
 
 ## Datasets
 
-### LSAT (6 products)
+### LSAT (6 products; 2 reanalyses from 1996)
 
 | Dataset | Native ensemble | Time | Source |
 |---------|-----------------|------|--------|
@@ -45,6 +45,18 @@ land +1.02 °C, ocean +0.48 °C.*
 | DCLSAT-I (DCENT-I v1.1.0.0, native `lsat` field) | 200 native members (infilled) | 1850–2025 | Harvard Dataverse `doi:10.7910/DVN/ROG38Q` |
 | NOAA Land v6.1.0 | No (200 synth: own best estimate + CRUTEM5 error model) | 1850–2026 | `ncei.noaa.gov/.../noaa-global-surface-temperature/v6.1` |
 | C-LSAT 2.1 (CMA homogenization) | No (200 synth: own best estimate + CRUTEM5 error model) | 1850–2025 | `gwpu.net` / [figshare:28255394](https://doi.org/10.6084/m9.figshare.28255394) |
+| ERA5 (land-mean 2 m T) | 10 EDA members (perturbations about the high-resolution analysis) | 1940–2025; used from 1996 | Copernicus CDS `reanalysis-era5-single-levels-monthly-means` |
+| JRA-3Q (land-mean 2 m T analysis) | No (ERA5 EDA perturbations, unscaled) | 1947–2025; used from 1996 | NSF NCAR GDEX d640002 / d640000 |
+
+The five station-based method families carry P=1/5 each. From 1996 a sixth,
+reanalysis family (ERA5 and JRA-3Q, 1/12 each) carries P=1/6. Because every
+member is a complete 1850–2025 series, the reanalyses enter by member
+replacement: a stratified 1/6 of members (exactly 1/6 of each station-based
+leaf's members) take their 1996–2025 values from a reanalysis member, aligned
+with the station-based segment over 1981–2010. Values before 1996 are
+unchanged. The JRA-3Q land series is the 2 m temperature analysis, as in JMA's
+own global mean (Kosaka et al., 2024). Sensitivity tests are in
+`temp_files/rean_sensitivity_eda/` (see the land methodology).
 
 ### SST (4 method families; 5 leaves)
 
@@ -76,7 +88,9 @@ Both follow the same five-step structure: (1) annualize & truncate to
 1850–2025; (2) build a per-dataset 200-member (or native 10-member)
 ensemble; (3) re-baseline to 1981–2010 member-wise; (4) apply a method-
 family tree to assign leaf probabilities; (5) sample 10,000 final
-members by primary-leaf assignment + within-leaf member draw.
+members by primary-leaf assignment + within-leaf member draw. The land
+build then replaces 1996–2025 in 1/6 of its members with the reanalysis
+leaves (above).
 
 The family trees are visualised in `family_tree_land.png` and
 `family_tree_ocean.png`.
@@ -104,6 +118,9 @@ land_ocean_temps/
 ├── estimate_coverage_persistence.py  # CRUTEM5 coverage-error persistence from masked ERA5
 ├── coverage_persistence_fit.json     # its output (p, φ), read by the land build
 ├── lsat_synthesis.py                 # annual pseudo-ensembles from published σ components
+├── prepare_era5_eda_land.py          # data prep: ERA5 EDA (10 members) → land and global monthly means
+├── prepare_jra3q_land.py             # data prep: JRA-3Q 2 m T (GDEX) → land monthly means + 5° boxes
+├── reanalysis_land.py                # reanalysis leaves and their 1996 member-replacement splice
 ├── dcent_i_member_fileids.json       # Harvard Dataverse manifest for DCENT-I v1.1.0.0
 │
 ├── build_land_ensemble.py            # core: 10,000-member LSAT builder
@@ -113,10 +130,12 @@ land_ocean_temps/
 ├── plot_ocean_ensemble.py            # plot: ocean best estimate + 95% band
 ├── plot_land_ocean_combined.py       # plot: land + ocean overlay
 ├── plot_family_trees.py              # plot: dendrogram for each family tree
+├── compute_land_ocean_ratio.py       # land/ocean warming ratio and difference (+ dependence checks)
 │
 ├── land_ensemble.csv                 # output: 176 × 10,001
 ├── land_ensemble_summary.csv         # output: annual mean, p2.5/50/97.5, σ
 ├── land_ensemble_perdataset.csv      # output: per-dataset mean and σ
+├── land_ensemble_manifest.csv        # output: members replaced by a reanalysis from 1996
 ├── ocean_ensemble.csv                # output: 176 × 10,001
 ├── ocean_ensemble_summary.csv
 ├── ocean_ensemble_perdataset.csv
@@ -130,7 +149,7 @@ land_ocean_temps/
 
 ```bash
 python3 -m venv venv && source venv/bin/activate
-pip install numpy pandas xarray netCDF4 matplotlib
+pip install numpy pandas scipy xarray netCDF4 matplotlib cdsapi
 ```
 
 ### 2. Download raw datasets
@@ -157,18 +176,21 @@ python3 prepare_hadsst_global_ensemble.py     # ~30 s
 python3 prepare_cobe_sst3_global_mean.py      # ~3 min
 python3 prepare_c_lsat_global_mean.py         # ~2 s
 python3 prepare_era5_5deg.py ERA5_T2M.nc ERA5_LSM.nc   # ~2 min; see below
+python3 prepare_era5_eda_land.py              # one CDS request (queue can take hours); ~160 KB CSV, raw deleted
+python3 prepare_jra3q_land.py                 # streams GDEX monthly files; raw deleted
 python3 estimate_coverage_persistence.py      # ~5 s; writes coverage_persistence_fit.json
 python3 prepare_hadisst_5deg.py               # ~1 min; downloads HadISST1 (243 MB), keeps a 20 MB 5° file
 python3 estimate_sst_coverage_persistence.py  # ~2 s; writes sst_coverage_persistence_fit.json
 ```
 
-The ERA5 and HadISST steps are needed only to re-derive the coverage-error
-persistence (`coverage_persistence_fit.json` and
-`sst_coverage_persistence_fit.json` are committed). They need
-ERA5 monthly-mean 2 m temperature (0.25°, 1940 onward, ~1.4 GB) and the
-ERA5 land-sea mask from the Copernicus Climate Data Store
-(`reanalysis-era5-single-levels-monthly-means`); the reduced 5° file is
-about 25 MB.
+The ERA5 5° file is the ERA5 land leaf and is also used to re-derive the
+coverage-error persistence (`coverage_persistence_fit.json` and
+`sst_coverage_persistence_fit.json` are committed; the HadISST steps are
+needed only for that). It needs ERA5 monthly-mean 2 m temperature (0.25°,
+1940 onward, ~1.4 GB) and the ERA5 land-sea mask from the Copernicus Climate
+Data Store (`reanalysis-era5-single-levels-monthly-means`); the reduced 5° file
+is about 25 MB. `prepare_era5_eda_land.py` needs CDS credentials in
+`~/.cdsapirc`.
 
 These read from `Land Data/` and `Ocean Data/` and write derived CSV
 files alongside their inputs.
@@ -181,8 +203,10 @@ python3 build_ocean_ensemble.py
 ```
 
 `build_land_ensemble.py --help` lists the sensitivity options (coverage
-persistence, recentred CRU-lineage bias, and the pre-2026-11 legacy
-synthesis via `--method legacy`).
+persistence, recentred CRU-lineage bias, the pre-2026-11 legacy synthesis
+via `--method legacy`, and the reanalysis options: `--reanalysis`,
+`--rean-weight`, `--splice-year`, `--align`, `--jra-field`, `--rean-domain`,
+`--rean-mask`, `--rean-struct`).
 
 Writes `land_ensemble.csv`, `ocean_ensemble.csv`, summary CSVs, and
 per-dataset diagnostics.
@@ -200,9 +224,10 @@ python3 plot_family_trees.py
 
 If you use these ensembles, please cite the underlying methodology paper:
 
-> Thorne, P. W. et al. (2026). *A framework for an operational
-> assessment of observed global warming-to-date*. ESSD preprint
-> [`https://doi.org/10.5194/essd-2025-825`](https://doi.org/10.5194/essd-2025-825).
+> Thorne, P. W. et al. (2026). *How well can we quantify when 1.5 °C of
+> global warming has been exceeded?* Earth Syst. Sci. Data Discuss.
+> [preprint; revised version accepted for ESSD],
+> [doi:10.5194/essd-2025-825](https://doi.org/10.5194/essd-2025-825).
 
 …together with the individual dataset references listed in the two
 methodology MDs.
@@ -214,4 +239,5 @@ licenses of their underlying input datasets — see the methodology MDs
 for per-dataset references and licensing terms (CRUTEM5 / HadSST4 /
 GloSATLAT: Open Government Licence v3; NOAA / NCEI: public domain;
 Berkeley Earth: CC BY 4.0; DCENT: CC0 via Harvard Dataverse;
-COBE-SST3: JMA/MRI archive, non-commercial use only).
+COBE-SST3: JMA/MRI archive, non-commercial use only; ERA5: Copernicus
+licence (attribution); JRA-3Q via NSF NCAR GDEX: CC BY-NC-SA 4.0).

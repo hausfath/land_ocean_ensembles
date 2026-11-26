@@ -38,6 +38,8 @@ def main() -> None:
         "dclsat":         "#5aae61",
         "noaa_land":      "#fdae61",
         "c_lsat":         "#984ea3",
+        "era5":           "#1b9e77",
+        "jra3q":          "#e7298a",
     }
     labels = {
         "berkeley_earth": "Berkeley Earth Highres",
@@ -46,6 +48,8 @@ def main() -> None:
         "dclsat":         "DCLSAT-I (DCENT-I v1.1.0.0)",
         "noaa_land":      "NOAA Land v6.1",
         "c_lsat":         "C-LSAT 2.1 (CMA)",
+        "era5":           "ERA5 land (in ensemble from 1996)",
+        "jra3q":          "JRA-3Q land (in ensemble from 1996)",
     }
     for name, color in colors.items():
         ax.plot(

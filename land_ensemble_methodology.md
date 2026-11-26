@@ -22,13 +22,16 @@ is described in `ocean_ensemble_methodology.md`.
 | 4 | DCLSAT (DCENT v3.0 `lsat` field) | 200 members (gridded; we will reduce to global means) | ensemble of global means we compute ourselves | 1850-01 – 2025-12 | 1982-2014 | `Land Data/DCLSAT/DCENT_ensemble_mean_1850_2025.nc` (mean only currently; 200 members to be pulled) |
 | 5 | NOAA Land v6.1.0 | No | deterministic best estimate only — v6.1 aravg text file has variance columns set to `-999`; merged-product gridded NetCDF has no separate land uncertainty field | 1850-01 – 2026-04 | 1971-2000 (aravg text) / 1991-2020 (gridded) | `Land Data/NOAA Land/aravg.mon.land.90S.90N.v6.1.0.202604.asc` |
 | 6 | C-LSAT 2.1 (Sun Yat-sen University / CMA-homogenization lineage) | No | deterministic best estimate only | 1850-01 – 2025-12 | 1961-1990 | `Land Data/C-LSAT/China-LSAT2.1_tavg.nc` (raw) → `Land Data/C-LSAT/C-LSAT2.1_global_monthly.csv` (derived via `prepare_c_lsat_global_mean.py`) |
+| 7 | ERA5 land-mean 2 m temperature (used from 1996) | 10 EDA members (1980–2025) | EDA perturbations about the high-resolution analysis | 1940-01 – 2025-12 | 1981-2010 (set here) | `Land Data/ERA5/era5_t2m_5deg_monthly.nc` (`prepare_era5_5deg.py`); `Land Data/ERA5/era5_eda_land_global_monthly.csv` (`prepare_era5_eda_land.py`) |
+| 8 | JRA-3Q land-mean 2 m temperature analysis (used from 1996) | No | ERA5 EDA perturbations, unscaled | 1947-09 – 2025-12 | 1981-2010 (set here) | `Land Data/JRA-3Q/jra3q_land_monthly.csv`, `jra3q_land_5deg_monthly.nc` (`prepare_jra3q_land.py`) |
 
 ### Time-coverage note
 
 GloSATLAT ends in 2021-12. The Thorne split-and-splice scheme has a
 **tail** (pre-1996) and **head** (1996–present) sub-ensemble. GloSATLAT
 qualifies for the tail. For the head it does not. Berkeley Earth, CRUTEM5,
-DCLSAT, NOAA Land all cover both tail and head.
+DCLSAT, NOAA Land all cover both tail and head. ERA5 and JRA-3Q start in
+1940 and 1947 and enter only from 1996 (Step 6).
 
 ## Step 1 — Common time/baseline grid
 
@@ -306,17 +309,18 @@ empirically by re-running the build with and without C-LSAT). The
 realised shift is well below the 0.05 °C concern threshold flagged
 at stats review.
 
-## Step 3 — Re-baseline all six per-dataset ensembles to 1981–2010
+## Step 3 — Re-baseline all per-dataset ensembles to 1981–2010
 
 For every member of every dataset:
 - subtract that member's own 1981–2010 mean.
 
-After this step all six ensembles share zero mean over 1981–2010 and
-are directly comparable.
+After this step all station-based ensembles share zero mean over 1981–2010
+and are directly comparable. The reanalysis leaves are put on the same
+convention in Step 6.
 
 ## Step 4 — Family tree weighting
 
-We use a 5-method-family tree with equal P=1/5 at each top-level
+For the station-based products we use a 5-method-family tree with equal P=1/5 at each top-level
 branch (Thorne 2026 §3.2.5 "equal-weight method families" principle).
 The five method families are:
 
@@ -332,6 +336,11 @@ The five method families are:
   multiple-reference homogenization on a merged station network that
   includes a distinct ~20% pre-1950 non-GHCN input).
 
+From 1996 a sixth **REANALYSIS** family (ERA5 and JRA-3Q land-mean 2 m
+temperature, 1/12 each) carries P=1/6, and each station-based family's
+weight is scaled by 5/6. This is implemented by member replacement after
+sampling (Step 6), not by changing the sampling weights below.
+
 ```
 LSAT root (P=1)
 ├── HOMOGENIZATION / SCALPEL family    (P=1/5)
@@ -343,11 +352,14 @@ LSAT root (P=1)
 │   └── GloSATLAT                                   (P=1/10)
 ├── DYNAMICAL-CONSTRAINT family         (P=1/5)
 │   └── DCLSAT                                      (P=1/5)
-└── CMA-HOMOGENIZATION family           (P=1/5)
-    └── C-LSAT 2.1                                  (P=1/5)
+├── CMA-HOMOGENIZATION family           (P=1/5)
+│   └── C-LSAT 2.1                                  (P=1/5)
+└── REANALYSIS family, 1996 onward      (P=1/6; others × 5/6)
+    ├── ERA5                                        (P=1/12)
+    └── JRA-3Q                                      (P=1/12)
 ```
 
-Resulting leaf probabilities (sum to 1):
+Resulting leaf probabilities before 1996 (sum to 1; from 1996 each is × 5/6):
 - Berkeley Earth: **0.20**
 - NOAA Land: **0.20**
 - DCLSAT: **0.20**
@@ -374,8 +386,6 @@ lineage remains P=0.20 throughout).
   families.
 - Place DCLSAT in PHA-family with NOAA (a strict reading of
   station-base overlap).
-- Run with a 1995/96 splice to quantify the spread inflation we forgo
-  by not splicing.
 
 ## Step 5 — Generate 10,000-member ensemble
 
@@ -391,16 +401,88 @@ The result is a 176 × 10,001 CSV (year + 10,000 anomaly columns), with
 each column being a complete-period draw. Year-by-year statistics
 (mean, 2.5/97.5 percentiles, SD) are then computed for plotting.
 
-Note: unlike Thorne's GMST pipeline we do **not** splice tail and head
-at 1995/96 — for LSAT alone the head/tail distinction matters less
-since all leaves cover both, and splicing artificially decorrelates
-pre-1996 and post-1995 uncertainty (Thorne flags this as a limitation
-of his own approach in his Supplement §3).
+Note: unlike Thorne's GMST pipeline the station-based members are not
+built from separate tail and head sub-ensembles. All station-based
+leaves cover both periods, and splicing two independent draws would
+artificially decorrelate pre-1996 and post-1995 uncertainty (Thorne
+flags this as a limitation of his own approach in his Supplement §3).
+The only splice is the reanalysis member replacement in Step 6.
+
+## Step 6 — Reanalysis member replacement from 1996
+
+ERA5 and JRA-3Q are land-mean 2 m temperature series (`reanalysis_land.py`):
+- **ERA5:** high-resolution monthly 2 m temperature, cos(lat) × fractional
+  land-sea mask, all land including Antarctica and Greenland, from the 5°
+  reduction (`prepare_era5_5deg.py`). Annual means of complete years.
+- **JRA-3Q:** the 2 m temperature *analysis* over land, weighted the same
+  way (`prepare_jra3q_land.py`, NSF NCAR GDEX d640002/d640000). JMA's own
+  global mean uses the analysis over land and the background over the
+  ocean (Kosaka et al., 2024); over land the analysis is JMA's choice.
+- **Uncertainty:** 10 ERA5 EDA members (`prepare_era5_eda_land.py`, the
+  CDS `monthly_averaged_ensemble_members` product, 1980–2025). Member k's
+  perturbation is its annual land mean minus the EDA mean. ERA5 member k =
+  high-resolution series + perturbation k; JRA-3Q member k = JRA-3Q series +
+  the same ERA5 perturbation (unscaled donor, as for JRA-3Q in the GSAT
+  ensemble). The EDA global means reproduce the vendored ERA5 ensemble of
+  the GSAT ensemble exactly. The EDA spread is small: annual land-mean SD
+  0.006–0.008 °C, 0.002 °C on the 2016–2025 mean. The high-resolution
+  analysis drifts against the EDA mean by +0.003 °C/decade (1980–2025).
+
+**Replacement.** After the 10,000 station-based members are sampled
+(Step 5), exactly 1/6 of each primary leaf's members (largest-remainder
+rounding; 1,667 in total) are chosen by a systematic sample ordered by
+each member's 1850–1900 offset, so the replaced members span the
+baseline distribution evenly. ERA5 and JRA-3Q are assigned alternately
+(834 / 833) with EDA member indices balanced. For each chosen member,
+the station-based series and the reanalysis member are each set to zero
+mean over 1981–2010; the member takes the reanalysis values from 1996
+onward and keeps its own values before 1996; it is then re-zeroed over
+1981–2010. Values before 1996 relative to 1850–1900 are unchanged, and
+the replaced members inherit their station-based leaf's 1850–1900
+offset. `land_ensemble_manifest.csv` lists the replaced members, the
+reanalysis and the EDA member used. Seed 20261125.
+
+**Effect.** 2016–2025 relative to 1850–1900 (5–95%): 1.909 [1.612–2.151] °C
+with the reanalyses, 1.905 [1.603–2.151] °C without. 1979–2025 trend
+median 0.319 [0.293–0.353] °C/decade, 0.312 [0.292–0.353] without (the
+trend distribution is clustered by leaf, so the median moves more than
+the mean, 0.321 vs 0.319). The ERA5 and JRA-3Q land trends over 1979–2025
+are 0.333 and 0.330 °C/decade, within the station-based range. On the
+1981–2010 baseline the annual 5–95% band has no step at 1995/96; from 1996
+it is slightly narrower (mean width 0.188 vs 0.196 °C over 1996–2025), and
+single years change by up to 0.03 °C (2000: lower bound −0.033 °C, as the
+reanalyses are cooler than the station leaves that year; 2025: median
++0.027 °C).
+
+**Sensitivity tests** (`temp_files/rean_sensitivity_eda/`, `run_all.sh`,
+`compare.py`; 2016–2025 vs 1850–1900, 5–95%):
+
+| Variant | Median [5–95%] (°C) | 1981–2025 trend, mean (°C/decade) |
+|---|---|---|
+| No reanalyses | 1.905 [1.603–2.151] | 0.326 |
+| **Canonical** (ERA5 + JRA-3Q, 1/6 from 1996) | **1.909 [1.612–2.151]** | **0.328** |
+| ERA5 only / JRA-3Q only | 1.914 / 1.907 | 0.329 / 0.327 |
+| Reanalysis weight 1/12 | 1.908 [1.603–2.151] | 0.327 |
+| Antarctica excluded | 1.915 [1.612–2.155] | 0.330 |
+| Reanalyses sampled at CRUTEM5 coverage | 1.914 [1.612–2.155] | 0.329 |
+| JRA-3Q background (first guess) | 1.897 [1.603–2.150] | 0.324 |
+| Persistent structural term, σ 0.03 / 0.05 °C (τ 30 yr) | 1.909 / 1.908 | 0.328 |
+| Splice at 1979/80 | 1.909 [1.612–2.151] | 0.328 |
+| Align on 1996–2010 | 1.908 [1.611–2.155] | 0.328 |
+
+Because both segments are aligned over the full 1981–2010 window, the
+splice year cannot change warming relative to 1981–2010 or 1850–1900
+after 1995; moving it to 1980 only changes 1980–1995 in the replaced
+members (1985 by −0.10 °C, where the reanalyses are cooler than the
+station products). In every variant the distribution before the splice
+year is unchanged. The coverage-matched variant converts each 5° box to
+anomalies against its own 1981–2010 monthly climatology before masking,
+because coverage changes month to month.
 
 ## Known limitations (resolved from stats review)
 
-1. **Berkeley Earth's 10 members propagate into 25% of the final
-   ensemble.** Tail percentiles (especially 2.5/97.5) will show
+1. **Berkeley Earth's 10 members propagate into 20% of the final
+   ensemble (1/6 from 1996).** Tail percentiles (especially 2.5/97.5) will show
    step-clustering at fewer than 10 distinct values in regimes where
    BE dominates. This is informative, not a bug — it advertises BE's
    under-sampling.
@@ -414,17 +496,25 @@ of his own approach in his Supplement §3).
 3. **DCLSAT marginal-LSAT spread is conditioned on SST/LSAT joint
    consistency** and is plausibly ~10–30% narrower than a standalone
    DCLSAT product's uncertainty would be.
-4. **Two of six leaves contribute no independent uncertainty.** NOAA
+4. **Three of eight leaves contribute no independent uncertainty.** NOAA
    Land and C-LSAT 2.1 carry CRUTEM5's error model around their own best
    estimates (Sections 2.5–2.6), so with the CRU-lineage leaves about 60%
    of the final ensemble's within-leaf uncertainty follows CRUTEM5's
-   published error model.
+   published error model (50% from 1996). JRA-3Q carries ERA5's EDA
+   perturbations.
 5. **Effective N in the tail is far below 10,000.** With Berkeley
-   Earth's 10 native trajectories sitting under P=0.25 of the tree,
+   Earth's 10 native trajectories sitting under P=0.20 of the tree,
    the effective independent draws in the tail (1850–1900) is
    plausibly closer to 200–500 once all leaves are accounted for.
    Percentile-based p-values should not be used for trend
    significance — the spread is structural, not stochastic.
+6. **The reanalysis spread is not a structural uncertainty.** The EDA
+   represents observation and model perturbations within one system and
+   is about 0.002 °C on decadal means; the difference between ERA5 and
+   JRA-3Q is the only structural information. Both assimilate surface
+   station reports (SYNOP), which overlap with the station products'
+   inputs, so they are not fully independent of them. A persistent structural term (σ 0.03–0.05 °C)
+   changes the headline by less than 0.002 °C.
 
 ## Safe vs unsafe uses
 
@@ -448,15 +538,19 @@ of his own approach in his Supplement §3).
 - `land_ensemble_summary.csv` — annual mean, 2.5 / 50 / 97.5 percentiles
   and 1σ from the 10,000-member ensemble.
 - `land_ensemble_perdataset.csv` — per-dataset annual best estimate and
-  1σ across that dataset's own (200-or-10-member) ensemble.
-- `land_ensemble.png` — central estimate + 95% band, with the five
-  individual best estimates overlaid for sanity-checking.
+  1σ across that dataset's own (200-or-10-member) ensemble, including the
+  ERA5 and JRA-3Q leaves (1980 onward, 1981–2010 baseline).
+- `land_ensemble_manifest.csv` — the 1,667 members replaced from 1996
+  (member index, reanalysis, EDA member).
+- `land_ensemble.png` — central estimate + 95% band, with the individual
+  best estimates (including ERA5 and JRA-3Q) overlaid for sanity-checking.
 - `family_tree_land.png` — visual summary of the family tree.
 
 ## References
 
-- Thorne, P. W. *et al.* (2026), *A framework for an operational
-  assessment of observed global warming-to-date*, ESSD preprint
+- Thorne, P. W. *et al.* (2026), *How well can we quantify when 1.5 °C of
+  global warming has been exceeded?*, Earth Syst. Sci. Data Discuss.
+  [preprint; revised version accepted for ESSD],
   https://doi.org/10.5194/essd-2025-825 — Sections 3.2.5, and esp.
   Figures 24–25 for the family-tree GMST construction.
 - Morice, C. P. *et al.* (2021), *An updated assessment of near-surface
@@ -491,3 +585,9 @@ of his own approach in his Supplement §3).
   papers — for the scalpel-based homogenization and kriging.
 - Yin, X. *et al.* (2024, 2025), NOAAGlobalTemp v6/v6.1 documentation —
   for the LSAT analysis used in NOAA Land.
+- Hersbach, H. *et al.* (2020), *The ERA5 global reanalysis*, QJRMS 146,
+  1999–2049, [doi:10.1002/qj.3803](https://doi.org/10.1002/qj.3803) —
+  ERA5 and its ensemble of data assimilations.
+- Kosaka, Y. *et al.* (2024), *The JRA-3Q reanalysis*, JMSJ 102, 49–109,
+  [doi:10.2151/jmsj.2024-004](https://doi.org/10.2151/jmsj.2024-004) —
+  JRA-3Q, and JMA's land-analysis / ocean-background global mean.

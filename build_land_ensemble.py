@@ -36,6 +36,8 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+import reanalysis_land as R
+
 ROOT = Path(__file__).parent
 DATA = ROOT / "Land Data"
 TMP = ROOT / "temp_files"
@@ -399,6 +401,21 @@ def parse_args(argv=None):
                          "DCLSAT member shapes rescaled to the CRU-lineage sigma")
     ap.add_argument("--smooth", type=int, default=SMOOTH_YEARS,
                     help="running window (yr) for the donor scale factor; 0 = per-year (legacy)")
+    ap.add_argument("--reanalysis", choices=["era5_jra3q", "era5", "jra3q", "none"], default="era5_jra3q",
+                    help="reanalysis family spliced in from --splice-year (none = pre-2026-11-25 build)")
+    ap.add_argument("--rean-weight", type=float, default=1 / 6,
+                    help="reanalysis family weight from the splice year on (default 1/6)")
+    ap.add_argument("--splice-year", type=int, default=1996, help="first year taken from the reanalysis")
+    ap.add_argument("--align", default="1981-2010", help="window on which tail and head are aligned")
+    ap.add_argument("--jra-field", choices=["an", "fc"], default="an",
+                    help="JRA-3Q land field: analysis (JMA method, default) or background")
+    ap.add_argument("--rean-domain", choices=["all", "ex_antarctica"], default="all")
+    ap.add_argument("--rean-mask", choices=["none", "crutem5"], default="none",
+                    help="subsample the reanalyses to CRUTEM5 monthly coverage (sensitivity)")
+    ap.add_argument("--rean-struct", type=float, default=0.0,
+                    help="SD (degC) of a persistent AR(1) structural term added to the reanalysis leaves")
+    ap.add_argument("--rean-struct-tau", type=float, default=30.0, help="e-folding time (yr) of that term")
+    ap.add_argument("--rean-seed", type=int, default=None, help="replacement RNG seed (default reanalysis_land.REAN_SEED)")
     ap.add_argument("--out", type=Path, default=ROOT, help="output directory")
     return ap.parse_args(argv)
 
@@ -566,6 +583,39 @@ def main(argv=None) -> None:
             final[iy, m] = leaves[leaf_names[pl]][iy, mi]
             member_leaf_log[iy, m] = pl
 
+    # ---------- reanalysis family: splice into a stratified share of members ----------
+    manifest = pd.DataFrame({"member": np.arange(N_FINAL),
+                             "primary_leaf": [leaf_names[i] for i in primary_leaf],
+                             "primary_member": primary_member_idx})
+    rean_cfg = None
+    if args.reanalysis != "none" and args.rean_weight > 0:
+        which = ("era5", "jra3q") if args.reanalysis == "era5_jra3q" else (args.reanalysis,)
+        al = tuple(int(x) for x in args.align.split("-"))
+        rean = R.reanalysis_leaves(YEARS, BASELINE, args.jra_field, args.rean_domain,
+                                   None if args.rean_mask == "none" else args.rean_mask,
+                                   args.rean_struct, args.rean_struct_tau, which=which)
+        for nm, ens in rean.items():
+            diag[f"{nm}_mean"] = np.nanmean(ens, axis=1)
+            diag[f"{nm}_sd"] = np.nanstd(ens, axis=1, ddof=1)
+        diag.to_csv(out_dir / "land_ensemble_perdataset.csv", index=False, float_format="%.5f")
+        final, man_r = R.splice(final, YEARS, primary_leaf, rean, args.rean_weight, args.splice_year,
+                                BASELINE, al, seed=args.rean_seed or R.REAN_SEED)
+        manifest = manifest.merge(man_r, on="member", how="left")
+        late = YEARS >= args.splice_year
+        for nm in rean:
+            member_leaf_log[np.ix_(late, man_r.member[man_r.head_leaf == nm].values)] = -1 - list(rean).index(nm)
+        rean_cfg = {"leaves": list(which), "weight": args.rean_weight, "splice_year": args.splice_year,
+                    "align": list(al), "jra_field": args.jra_field, "domain": args.rean_domain,
+                    "mask": args.rean_mask, "struct_sigma": args.rean_struct,
+                    "struct_tau": args.rean_struct_tau, "seed": args.rean_seed or R.REAN_SEED,
+                    "n_replaced": int(len(man_r))}
+        print(f"\nReanalysis splice: {len(man_r)} members from {args.splice_year} "
+              f"({man_r.head_leaf.value_counts().to_dict()})")
+        for nm, ens in rean.items():
+            print(f"  {nm}: 2016-2025 mean {np.nanmean(ens[YEARS >= 2016]):+.3f} (rel. 1981-2010), "
+                  f"EDA SD 2024 {np.nanstd(ens[YEARS == 2024], ddof=1):.4f}")
+    manifest.to_csv(out_dir / "land_ensemble_manifest.csv", index=False)
+
     # ---------- save outputs ----------
     print("Saving land_ensemble.csv ...")
     cols = ["year"] + [f"m{i:05d}" for i in range(1, N_FINAL + 1)]
@@ -595,13 +645,19 @@ def main(argv=None) -> None:
         (member_leaf_log[int(np.where(YEARS == 1900)[0][0])] == leaf_to_idx[n]).mean()
         for n in leaf_names
     ]
+    if rean_cfg:
+        iy24 = int(np.where(YEARS == 2024)[0][0])
+        extra = pd.DataFrame({"leaf": rean_cfg["leaves"],
+                              "share_2024": [(member_leaf_log[iy24] == -1 - i).mean() for i in range(len(rean_cfg["leaves"]))],
+                              "share_1900": 0.0})
+        leaf_counts = pd.concat([leaf_counts, extra], ignore_index=True)
     print("\nLeaf shares of the final 10,000 in 1900 and 2024 (sanity vs. tree weights):")
     print(leaf_counts.to_string(index=False))
     (out_dir / "build_config.json").write_text(json.dumps({
         "method": args.method, "cru_version": CRU_VERSION if not legacy else args.cru_version,
         "coverage": None if legacy else args.coverage, "coverage_p_phi": cov_pp,
         "recentre": args.recentre, "donor": None if legacy else args.donor,
-        "donor_smooth_years": smooth,
+        "donor_smooth_years": smooth, "reanalysis": rean_cfg,
     }, indent=1))
 
 

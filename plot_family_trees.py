@@ -24,17 +24,20 @@ BAND_FC = "#f2f4f7"
 
 
 # ---------- tree definitions ---------------------------------------------
-# Each top-level branch is one method family (equal P=1/5 at root).
-# Within the CRU-lineage family the two leaves share P=1/10 each.
+# LSAT: five station-based method families at P=1/5 each; from 1996 a sixth,
+# reanalysis family takes P=1/6 (member replacement, see reanalysis_land.py).
+# Within the CRU-lineage and reanalysis families the two leaves share equally.
 LAND_TREE = [
     "berkeley_earth",          # HOMOG / SCALPEL family
     "noaa_land",               # PAIRWISE PHA family
     ["crutem5", "glosatlat"],  # CRU-lineage family
     "dclsat",                  # DYNAMICAL-CONSTRAINT family
     "c_lsat",                  # CMA-HOMOGENIZATION family
+    ["era5", "jra3q"],         # REANALYSIS family (from 1996)
 ]
 LAND_FAMILIES = ["Homogenization / scalpel", "Pairwise homogenization",
-                 "CRU lineage", "Dynamical constraint", "CMA homogenization"]
+                 "CRU lineage", "Dynamical constraint", "CMA homogenization",
+                 "Reanalysis (from 1996)"]
 
 OCEAN_TREE = [
     "hadsst4",
@@ -51,6 +54,8 @@ LAND_LEAVES = {
     "glosatlat":      ("GloSATLAT 1.0.0.0",           "1781–2021", "200 σ-synthesized members"),
     "dclsat":         ("DCLSAT-I (DCENT-I v1.1.0.0)", "1850–2025", "200 native members (infilled)"),
     "c_lsat":         ("C-LSAT 2.1 (CMA)",            "1850–2025", "CRUTEM5-σ pseudo-ensemble"),
+    "era5":           ("ERA5 (land 2 m T)",           "1996–2025", "10 EDA members"),
+    "jra3q":          ("JRA-3Q (land analysis)",      "1996–2025", "ERA5-EDA pseudo-ensemble"),
 }
 
 OCEAN_LEAVES = {
@@ -71,7 +76,7 @@ def _iter_leaves(node):
             yield from _iter_leaves(c)
 
 
-def render(tree, leaf_info, families, root_lines, out_path):
+def render(tree, leaf_info, families, root_lines, out_path, weight_line=None):
     leaves = list(_iter_leaves(tree))
     n = len(leaves)
     ROW = 1.0
@@ -157,7 +162,7 @@ def render(tree, leaf_info, families, root_lines, out_path):
             fontsize=13.5, fontweight="bold", color="white", zorder=3)
     ax.text(cx, root_y + 0.06, root_lines[1], ha="center", va="center",
             fontsize=11, color="#dce9fb", zorder=3)
-    ax.text(cx, root_y + 0.40, f"P = 1/{len(tree)} per family", ha="center",
+    ax.text(cx, root_y + 0.40, weight_line or f"P = 1/{len(tree)} per family", ha="center",
             va="center", fontsize=11, color="#dce9fb", zorder=3)
     ax.annotate("", xy=(ROOT_X0 + ROOT_W - 0.02, root_y), xytext=(SPINE_X, root_y),
                 arrowprops=dict(arrowstyle="<|-", color=BLUE, lw=2.4,
@@ -184,7 +189,8 @@ def render(tree, leaf_info, families, root_lines, out_path):
 def main():
     render(LAND_TREE, LAND_LEAVES, LAND_FAMILIES,
            ("Land LSAT ensemble", "10,000 members · 1850–2025"),
-           ROOT / "family_tree_land.png")
+           ROOT / "family_tree_land.png",
+           weight_line="P = 1/5 each; 1/6 from 1996")
     render(OCEAN_TREE, OCEAN_LEAVES, OCEAN_FAMILIES,
            ("Ocean SST ensemble", "10,000 members · 1850–2025"),
            ROOT / "family_tree_ocean.png")
